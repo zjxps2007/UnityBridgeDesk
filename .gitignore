@@ -1,0 +1,69 @@
+# .NET / build output. Keep packages.lock.json, source assets, and build scripts.
+**/[Bb]in/
+**/[Oo]bj/
+/.cache/
+/dist/
+**/TestResults/
+**/BenchmarkDotNet.Artifacts/
+*.exe
+*.dll
+*.pdb
+*.nupkg
+*.snupkg
+*.zip
+*.tar
+*.tar.gz
+*.7z
+
+# Editor / machine state
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local Desk data and benchmark evidence (may contain project paths or prompts)
+/results/
+/runs/
+/workspaces/
+/exports/
+/settings/
+/catalog/
+/drafts/
+/packages/
+/private-ai/
+*.jsonl
+*.log
+*.trx
+*.dmp
+*.bak
+*.tmp
+*.json.lock
+
+# Credentials / local configuration. Track only deliberately anonymized examples.
+.env
+.env.*
+!.env.example
+**/auth.json
+**/credentials.json
+*.pfx
+*.p12
+*.pem
+*.key
+*.local.json
+*.local.yaml
+*.local.yml
+.codex/
+.agents/
+
+# Local design history and diagnostics; public docs live in docs/.
+# Keep the mascot's editable source and preview used by build/Build-Icon.ps1.
+/design/*
+!/design/branding/
+/build/Inspect-*
+/build/Fetch-TestReleases.ps1

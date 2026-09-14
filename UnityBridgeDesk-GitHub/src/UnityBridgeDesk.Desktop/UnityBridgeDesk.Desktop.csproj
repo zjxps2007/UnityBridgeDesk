@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets/desk.ico</ApplicationIcon>
+    <AssemblyName>UnityBridgeDesk</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Using Include="System.IO" />
+    <ProjectReference Include="../UnityBridgeDesk.Core/UnityBridgeDesk.Core.csproj" />
+    <ProjectReference Include="../UnityBridgeDesk.Infrastructure/UnityBridgeDesk.Infrastructure.csproj" />
+    <Resource Include="Assets/cloud-station.png" />
+    <Resource Include="Assets/desk.ico" />
+  </ItemGroup>
+  <ItemGroup><ProjectReference Include="../UnityBridgeDesk.Worker/UnityBridgeDesk.Worker.csproj" ReferenceOutputAssembly="false" /></ItemGroup>
+  <Target Name="CopyWorker" AfterTargets="Build" Condition="'$(RuntimeIdentifier)' == ''">
+    <ItemGroup><WorkerFiles Include="../UnityBridgeDesk.Worker/bin/$(Configuration)/net10.0-windows/UnityBridgeDesk.Worker.*" /></ItemGroup>
+    <Copy SourceFiles="@(WorkerFiles)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

@@ -1,0 +1,21 @@
+<DrawingImage xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
+ <DrawingImage.Drawing>
+  <DrawingGroup>
+   <GeometryDrawing Brush="#DCCCF1"><GeometryDrawing.Geometry><RectangleGeometry Rect="6,6,116,116" RadiusX="26" RadiusY="26" /></GeometryDrawing.Geometry></GeometryDrawing>
+   <GeometryDrawing Brush="#C6B1E0" Geometry="M25,97 C25,88 108,88 108,97 C108,109 25,109 25,97Z" />
+   <GeometryDrawing Brush="#FFFEFC" Geometry="M26,94 C14,82 20,55 30,48 L29,27 Q29,20 35,24 L53,39 Q67,34 83,39 L101,24 Q108,20 107,28 L106,50 C120,69 115,99 98,103 L42,103 Q31,103 26,94Z">
+    <GeometryDrawing.Pen><Pen Brush="#584278" Thickness="4" LineJoin="Round" /></GeometryDrawing.Pen>
+   </GeometryDrawing>
+   <GeometryDrawing Brush="#F1CBDC" Geometry="M35,30 L36,47 L47,42Z M101,30 L89,43 L101,49Z" />
+   <GeometryDrawing Brush="#F1CBDC"><GeometryDrawing.Geometry><EllipseGeometry Center="36,80" RadiusX="8" RadiusY="4" /></GeometryDrawing.Geometry></GeometryDrawing>
+   <GeometryDrawing Brush="#F1CBDC"><GeometryDrawing.Geometry><EllipseGeometry Center="98,80" RadiusX="8" RadiusY="4" /></GeometryDrawing.Geometry></GeometryDrawing>
+   <GeometryDrawing Geometry="M40,69 Q47,59 54,69 M80,69 Q87,59 94,69">
+    <GeometryDrawing.Pen><Pen Brush="#584278" Thickness="4.5" StartLineCap="Round" EndLineCap="Round" /></GeometryDrawing.Pen>
+   </GeometryDrawing>
+   <GeometryDrawing Geometry="M57,81 Q62,89 67,81 Q72,89 77,81">
+    <GeometryDrawing.Pen><Pen Brush="#584278" Thickness="3.5" StartLineCap="Round" EndLineCap="Round" /></GeometryDrawing.Pen>
+   </GeometryDrawing>
+   <GeometryDrawing Brush="#FFF2CF" Geometry="M91,8 L94,15 L101,18 L94,21 L91,28 L88,21 L81,18 L88,15Z" />
+  </DrawingGroup>
+ </DrawingImage.Drawing>
+</DrawingImage>
