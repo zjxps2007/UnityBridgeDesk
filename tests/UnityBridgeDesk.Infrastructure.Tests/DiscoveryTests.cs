@@ -105,6 +105,36 @@ public sealed class DiscoveryTests
         Assert.AreEqual(moved,catalog.Document.Artifacts.Single(x=>x.Kind==ArtifactKind.CliExecutable).Path);
     }
     [TestMethod]
+    public async Task FindsDesktopAndNpmNativeProgramsAndCustomHomeWithoutPathOrCredentialReads()
+    {
+        string root=SampleData.TestDirectory();
+        string desktop=Path.Combine(root,"local","OpenAI","Codex","bin","build-id","codex.exe");
+        string npm=Path.Combine(root,"roaming","npm","node_modules","@openai","codex-win32-x64","vendor","x86_64-pc-windows-msvc","codex","codex.exe");
+        string custom=Path.Combine(root,"custom-home");Directory.CreateDirectory(custom);
+        foreach(string path in new[]{desktop,npm}){Directory.CreateDirectory(Path.GetDirectoryName(path)!);File.WriteAllText(path,"never run this fixture");}
+        File.WriteAllText(Path.Combine(Path.GetDirectoryName(desktop)!,"codex-command-runner.exe"),"helper is not the CLI");
+        File.WriteAllText(Path.Combine(custom,"auth.json"),"must not be read");
+        using var locked=new FileStream(Path.Combine(custom,"auth.json"),FileMode.Open,FileAccess.ReadWrite,FileShare.None);
+        var scanner=new LocalDiscovery(new(Path.Combine(root,"home"),Path.Combine(root,"roaming"),Path.Combine(root,"local"),Path.Combine(root,"programs"),Path.Combine(root,"app"),"",custom));
+        var result=await scanner.ScanAsync(CatalogDocument.Empty);
+        CollectionAssert.AreEquivalent(new[]{desktop,npm},result.Candidates.Where(x=>x.Kind==DiscoveryKind.AiExecutable).Select(x=>x.Path).ToArray());
+        Assert.AreEqual(custom,result.Candidates.Single(x=>x.Kind==DiscoveryKind.AuthenticationHome).Path);
+        Assert.AreEqual(0,result.UnreadableLocations);
+    }
+    [TestMethod]
+    public async Task RemembersExplicitlyNamedCodexExecutableAndRejectsMissingOrScriptLocations()
+    {
+        string root=SampleData.TestDirectory(), renamed=Path.Combine(root,"my-ai.exe"), script=Path.Combine(root,"launcher.cmd");
+        File.WriteAllText(renamed,"fixture");File.WriteAllText(script,"fixture");
+        var first=await Scanner(root).ScanAsync(CatalogDocument.Empty,configuredPaths:new Dictionary<string,string>{{"codex",renamed}});
+        Assert.AreEqual(renamed,first.Candidates.Single(x=>x.Kind==DiscoveryKind.AiExecutable).Path);
+        foreach(string invalid in new[]{script,Path.Combine(root,"missing.exe")})
+        {
+            var result=await Scanner(root).ScanAsync(CatalogDocument.Empty,configuredPaths:new Dictionary<string,string>{{"codex",invalid}});
+            Assert.AreEqual(0,result.Candidates.Count(x=>x.Kind==DiscoveryKind.AiExecutable));
+        }
+    }
+    [TestMethod]
     public async Task CancellationStopsDiscovery()
     {
         using var cancellation=new CancellationTokenSource();cancellation.Cancel();

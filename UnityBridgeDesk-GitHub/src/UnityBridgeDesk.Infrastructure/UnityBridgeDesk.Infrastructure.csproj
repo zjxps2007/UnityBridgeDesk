@@ -1,5 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><TargetFramework>net10.0-windows</TargetFramework></PropertyGroup>
-  <ItemGroup><ProjectReference Include="../UnityBridgeDesk.Core/UnityBridgeDesk.Core.csproj" /></ItemGroup>
-  <ItemGroup><Content Include="Assets/**/*.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
-</Project>

@@ -111,6 +111,7 @@ public sealed class RenderTests
                 VerifySidebar(directory);
                 VerifyOperationActions(directory);
                 VerifyDiscoveredPaths(directory);
+                VerifyAmbiguousPaths(directory);
                 // Exercise the real shell with legacy floating layouts and a cached execution view.
                 string tabRoot = Path.Combine(directory, "tab-shell");
                 var storage = new ShellPersistence(tabRoot);
@@ -384,11 +385,59 @@ public sealed class RenderTests
             TextBox Field(string key)=>Descendants(panel).OfType<TextBox>().Single(x=>AutomationProperties.GetAutomationId(x)=="Runner-"+key);
             Assert.AreEqual(executable,Field("codex").Text);Assert.AreEqual(home,Field("auth").Text);
             Assert.AreEqual("",Field("editor").Text);Assert.AreEqual("",Field("model").Text);
+            Expander PathDetails(string key)=>Descendants(panel).OfType<Expander>().Single(x=>AutomationProperties.GetAutomationId(x)=="PathDetails-"+key);
+            string Status(string key)=>Descendants(panel).OfType<TextBlock>().Single(x=>AutomationProperties.GetAutomationId(x)=="ConnectionStatus-"+key).Text;
+            Assert.IsFalse(PathDetails("codex").IsExpanded,"Detected paths must not require manual setup.");
+            Assert.IsFalse(PathDetails("auth").IsExpanded);
+            StringAssert.Contains(Status("codex"),"실행 파일 확인됨");StringAssert.Contains(Status("auth"),"로그인 파일 위치 확인됨");
+            StringAssert.Contains(Status("editor"),"프로젝트 선택");
+            // A valid manual executable must survive another scan, even with an unconventional filename.
+            string manual=Path.Combine(native,"my-codex.exe");File.WriteAllText(manual,"never executed");Field("codex").Text=manual;
+            var retry=Descendants(panel).OfType<Button>().Single(x=>AutomationProperties.GetAutomationId(x)=="FindPath-codex");
+            retry.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));PumpUntil(()=>retry.IsEnabled);
+            Assert.AreEqual(manual,Field("codex").Text);
+            Field("auth").Text=native;StringAssert.Contains(Status("auth"),"로그인 파일을 찾지 못");
+            Field("auth").Text=home;
             Assert.IsFalse(Descendants(panel).OfType<CheckBox>().Single(x=>x.Content?.ToString()=="이 작업 폴더의 파일 변경과 네트워크 사용 허용").IsChecked==true);
             var save=panel.FlushInputAsync();PumpUntil(()=>save.IsCompleted);Assert.IsTrue(save.Result);
             var memory=new LocalSetupStore(root).LoadAsync();PumpUntil(()=>memory.IsCompleted);
-            Assert.AreEqual(executable,memory.Result.Paths["codex"]);
+            Assert.AreEqual(manual,memory.Result.Paths["codex"]);
             Assert.IsFalse(runtime.IsRunning);
+        }
+        finally{SynchronizationContext.SetSynchronizationContext(before);}
+    }
+    private static void VerifyAmbiguousPaths(string directory)
+    {
+        var before=SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
+        try
+        {
+            string root=Path.Combine(directory,"ambiguous-paths");
+            string bin=Path.Combine(root,"local","OpenAI","Codex","bin");
+            foreach(string version in new[]{"first-build","second-build"})
+            {string path=Path.Combine(bin,version);Directory.CreateDirectory(path);File.WriteAllText(Path.Combine(path,"codex.exe"),"fixture");}
+            using var catalog=new CatalogService(root);catalog.LoadAsync().GetAwaiter().GetResult();
+            var runtime=new DeskRuntime(root,new WorkerRunner(Path.Combine(root,"never-executed.exe")));
+            var scanner=new LocalDiscovery(new(Path.Combine(root,"home"),Path.Combine(root,"roaming"),Path.Combine(root,"local"),Path.Combine(root,"programs"),Path.Combine(root,"app"),""));
+            using var panel=new OperationPanel(runtime,catalog,ToolKind.AiWork,new ShellSession(),scanner);
+            panel.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent));
+            var primary=Descendants(panel).OfType<Button>().Single(x=>AutomationProperties.GetAutomationId(x)=="OperationPrimary");PumpUntil(()=>primary.IsEnabled);
+            var input=Descendants(panel).OfType<TextBox>().Single(x=>AutomationProperties.GetAutomationId(x)=="Runner-codex");
+            var choices=Descendants(panel).OfType<ComboBox>().Single(x=>AutomationProperties.GetAutomationId(x)=="PathChoices-codex");
+            var details=Descendants(panel).OfType<Expander>().Single(x=>AutomationProperties.GetAutomationId(x)=="PathDetails-codex");
+            Assert.AreEqual("",input.Text,"Ambiguous discoveries must not silently choose an executable.");
+            Assert.AreEqual(2,choices.Items.Count);Assert.IsTrue(details.IsExpanded);Assert.AreEqual(-1,choices.SelectedIndex);
+            choices.SelectedIndex=1;Assert.IsTrue(File.Exists(input.Text));Assert.IsTrue(input.Text.StartsWith(bin+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase));
+            string selected=input.Text;choices.SelectedIndex=0;Assert.AreNotEqual(selected,input.Text);Assert.IsTrue(File.Exists(input.Text));
+            foreach(string key in new[]{"codex","auth"})
+            {
+                var card=Descendants(panel).OfType<Border>().Single(x=>AutomationProperties.GetAutomationId(x)=="Connection-"+key);
+                card.Width=440;card.Measure(new Size(440,double.PositiveInfinity));card.Arrange(new Rect(new Point(),card.DesiredSize));card.UpdateLayout();
+                var bitmap=new RenderTargetBitmap(660,(int)Math.Ceiling(card.ActualHeight*1.5),144,144,PixelFormats.Pbgra32);bitmap.Render(card);
+                var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                using var file=File.Create(Path.Combine(directory,"connection-"+key+"-150.png"));encoder.Save(file);
+            }
+            Assert.IsGreaterThanOrEqualTo(120d,input.ActualWidth);Assert.IsFalse(runtime.IsRunning);
         }
         finally{SynchronizationContext.SetSynchronizationContext(before);}
     }

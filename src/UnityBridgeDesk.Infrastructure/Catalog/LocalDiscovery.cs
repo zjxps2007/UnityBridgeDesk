@@ -9,14 +9,14 @@ public enum DiscoveryKind { Project, Editor, BridgeCli, Connector, AiExecutable,
 public sealed record LocalCandidate(DiscoveryKind Kind, string Path, string Label, string Source, string? Version = null);
 public sealed record DiscoveryResult(IReadOnlyList<LocalCandidate> Candidates, int UnreadableLocations, bool Limited);
 public sealed record DiscoveryLocations(string Home, string Roaming, string Local, string ProgramFiles,
-    string Application, string SearchPath)
+    string Application, string SearchPath, string? CodexHome = null)
 {
     public static DiscoveryLocations Current => new(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), AppContext.BaseDirectory,
-        Environment.GetEnvironmentVariable("PATH") ?? "");
+        Environment.GetEnvironmentVariable("PATH") ?? "", Environment.GetEnvironmentVariable("CODEX_HOME"));
 }
 
 // Bounded, local, read-only discovery. Never launches discovered executables or reads authentication contents.
@@ -24,11 +24,12 @@ public sealed class LocalDiscovery(DiscoveryLocations locations)
 {
     public LocalDiscovery() : this(DiscoveryLocations.Current) { }
     public Task<DiscoveryResult> ScanAsync(CatalogDocument catalog, IEnumerable<string>? extraFolders = null,
-        IEnumerable<string>? rememberedPaths = null, CancellationToken cancellationToken = default) =>
-        Task.Run(() => Scan(catalog, extraFolders ?? [], rememberedPaths ?? [], cancellationToken), cancellationToken);
+        IEnumerable<string>? rememberedPaths = null, CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, string>? configuredPaths = null) =>
+        Task.Run(() => Scan(catalog, extraFolders ?? [], rememberedPaths ?? [], configuredPaths, cancellationToken), cancellationToken);
 
     private DiscoveryResult Scan(CatalogDocument catalog, IEnumerable<string> extraFolders,
-        IEnumerable<string> rememberedPaths, CancellationToken ct)
+        IEnumerable<string> rememberedPaths, IReadOnlyDictionary<string, string>? configuredPaths, CancellationToken ct)
     {
         var found = new Dictionary<string, LocalCandidate>(StringComparer.OrdinalIgnoreCase);
         var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -43,7 +44,7 @@ public sealed class LocalDiscovery(DiscoveryLocations locations)
                 _ => System.IO.Path.GetFileName(path) };
             found.TryAdd(kind + "|" + path, new(kind, path, label, source, version));
         }
-        void Inspect(string raw, string source)
+        void Inspect(string raw, string source, string? configuredKind = null)
         {
             ct.ThrowIfCancellationRequested();
             try
@@ -55,7 +56,9 @@ public sealed class LocalDiscovery(DiscoveryLocations locations)
                 if (File.Exists(path))
                 {
                     string name = System.IO.Path.GetFileName(path);
-                    if (name.Equals("Unity.exe", StringComparison.OrdinalIgnoreCase))
+                    if (configuredKind == "codex" && name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                        Add(DiscoveryKind.AiExecutable, path, source);
+                    else if (name.Equals("Unity.exe", StringComparison.OrdinalIgnoreCase))
                         Add(DiscoveryKind.Editor, path, source, EditorVersion(path));
                     else if (name.Equals("codex.exe", StringComparison.OrdinalIgnoreCase)) Add(DiscoveryKind.AiExecutable, path, source);
                     else if (Regex.IsMatch(name, @"^unity[-]?bridge(?:[-.][\w.-]+)?\.exe$", RegexOptions.IgnoreCase)) Add(DiscoveryKind.BridgeCli, path, source);
@@ -106,6 +109,8 @@ public sealed class LocalDiscovery(DiscoveryLocations locations)
         }
         // Explicitly selected folders have priority over broad default locations.
         foreach (string path in extraFolders.Take(20)) Walk(path, 3, "지정한 폴더");
+        if (configuredPaths is not null)
+            foreach (var pair in configuredPaths.Take(100)) Inspect(pair.Value, "이전에 지정한 위치", pair.Key);
         foreach (string path in rememberedPaths.Take(100)) Inspect(path, "이전에 지정한 위치");
         foreach (var project in catalog.Projects) Inspect(project.Project.RootPath, "보관함");
         foreach (var artifact in catalog.Artifacts)
@@ -134,13 +139,19 @@ public sealed class LocalDiscovery(DiscoveryLocations locations)
         foreach (string folder in locations.SearchPath.Split(';', StringSplitOptions.RemoveEmptyEntries).Take(100))
         foreach (string name in new[] { "unity-bridge.exe", "unity-bridge-windows-amd64.exe", "codex.exe" })
             Inspect(System.IO.Path.Combine(folder.Trim().Trim('"'), name), "시스템 PATH");
+        // The desktop app manages native CLI builds outside PATH when Desk is launched from Explorer.
+        Walk(System.IO.Path.Combine(locations.Local, "OpenAI", "Codex", "bin"), 1, "Codex 데스크톱 설치 위치");
+        Inspect(System.IO.Path.Combine(locations.Home, ".local", "bin", "codex.exe"), "사용자 설치 위치");
+        Inspect(System.IO.Path.Combine(locations.Home, ".codex", "bin", "codex.exe"), "사용자 설치 위치");
+        if (!string.IsNullOrWhiteSpace(locations.CodexHome)) Inspect(locations.CodexHome, "지정된 Codex 홈");
+        Inspect(System.IO.Path.Combine(locations.Home, ".codex"), "기본 로그인 위치");
+        // Locate native npm payloads; launcher scripts cannot be passed to the worker as executables.
+        foreach (string package in new[] { "codex", "codex-win32-x64", "codex-win32-arm64" })
+            Walk(System.IO.Path.Combine(locations.Roaming, "npm", "node_modules", "@openai", package, "vendor"), 3, "npm 설치 위치");
         foreach (string root in new[] { locations.Application, System.IO.Path.Combine(locations.Home, ".unity-bridge"),
             System.IO.Path.Combine(locations.Local, "UnityBridge"), System.IO.Path.Combine(locations.Home, "Downloads"),
             System.IO.Path.Combine(locations.Home, "Unity Projects"), System.IO.Path.Combine(locations.Home, "Documents", "Unity Projects") })
             Walk(root, 2, "기본 위치");
-        Inspect(System.IO.Path.Combine(locations.Home, ".codex"), "기본 로그인 위치");
-        // npm's launcher script is not directly executable by the worker; locate its native Windows payload.
-        Walk(System.IO.Path.Combine(locations.Roaming, "npm", "node_modules", "@openai", "codex", "vendor"), 3, "npm 설치 위치");
         return new(found.Values.ToArray(), unreadable, limited);
     }
 

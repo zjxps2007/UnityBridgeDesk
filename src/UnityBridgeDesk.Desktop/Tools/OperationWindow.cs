@@ -103,11 +103,11 @@ public sealed partial class OperationPanel : UserControl,IDisposable
         foreach(var box in new[]{balanced,keepFailed,keepSuccess})box.Click+=(_,_)=>Invalidate();
         setup.Children.Add(new Expander{Header="반복 · 제한 시간 · 복제본 보관",Content=limits,Margin=new(0,14,0,10)});
         var aiSetup=new StackPanel();
-        Field(aiSetup,"codex","Codex 실행 파일",true);Field(aiSetup,"model","모델 ID · 직접 지정");Field(aiSetup,"reasoning","추론 수준",value:"medium");
-        Field(aiSetup,"auth","파일 인증이 설정된 Codex 홈",folder:true);Field(aiSetup,"calls","AI 도구 호출 한도",value:"100");
+        Field(aiSetup,"codex","Codex 실행 파일",true);Field(aiSetup,"auth","Codex 로그인 정보",folder:true);
+        Field(aiSetup,"model","모델 ID · 직접 지정");Field(aiSetup,"reasoning","추론 수준",value:"medium");Field(aiSetup,"calls","AI 도구 호출 한도",value:"100");
         aiSetup.Children.Add(permission);permission.Click+=(_,_)=>Invalidate();
         aiSetup.Children.Add(Text("인증 파일의 경로만 설정에 저장합니다. 실행마다 인증만 담은 새 홈과 새 대화를 사용합니다. 토큰은 제공자가 보고한 값만 기록하며, 보고되지 않으면 미제공입니다. 호출 한도는 이벤트를 관측한 시점에 중단하므로 이미 시작한 호출은 진행됐을 수 있습니다."));
-        setup.Children.Add(new Expander{Header="AI 연결 · 이 도구의 모델 설정",Content=aiSetup,Margin=new(0,8,0,10),Visibility=tool==ToolKind.Installation?Visibility.Collapsed:Visibility.Visible});
+        setup.Children.Add(new Expander{Header="AI 연결 · 이 도구의 모델 설정",IsExpanded=tool==ToolKind.AiWork,Content=aiSetup,Margin=new(0,8,0,10),Visibility=tool==ToolKind.Installation?Visibility.Collapsed:Visibility.Visible});
         preview.MinHeight=100;preview.MaxHeight=260;
         operationPlan=new Expander{Header="검토한 실행 계획 · 확인 안내",Content=preview,Margin=new(0,10,0,0)};setup.Children.Add(operationPlan);
         tabs.Items.Add(new TabItem{Header="2  진행",Content=new Border{Padding=new(18),Child=progress}});
@@ -141,17 +141,17 @@ public sealed partial class OperationPanel : UserControl,IDisposable
     private static TextBlock Text(string value,double size=12)=>new(){Text=value,FontSize=size,TextWrapping=TextWrapping.Wrap,Margin=new(0,5,0,8)};
     private void Field(Panel parent,string key,string label,bool file=false,bool folder=false,string value="")
     {
-        parent.Children.Add(Text(label));var grid=new Grid();grid.ColumnDefinitions.Add(new(){Width=new(1,GridUnitType.Star)});grid.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
+        bool connection=key is "editor" or "codex" or "auth";
+        if(!connection)parent.Children.Add(Text(label));var grid=new Grid();grid.ColumnDefinitions.Add(new(){Width=new(1,GridUnitType.Star)});grid.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
         var input=new TextBox{Text=value,MinWidth=120,MinHeight=36,Padding=new(10,6,10,6),VerticalContentAlignment=VerticalAlignment.Center,Margin=new(0,0,8,5),MaxLength=32760};
         if(key is "repeats" or "warmups" or "inner" or "timeout" or "prepare" or "repairs" or "calls"){input.Width=150;input.HorizontalAlignment=HorizontalAlignment.Left;}
         fields[key]=input;AutomationProperties.SetName(input,label);AutomationProperties.SetAutomationId(input,"Runner-"+key);input.TextChanged+=(_,_)=>{ClearInputProblem(key);PathEdited(key);Invalidate();};grid.Children.Add(input);
         if(file||folder)
         {
-            var browse=new Button{Content="찾기",Margin=new(0,0,0,5)};Grid.SetColumn(browse,1);grid.Children.Add(browse);
+            var browse=new Button{Content=key=="auth"?"폴더 선택":key=="editor"?"Unity.exe 찾기":key=="codex"?"실행 파일 찾기":"찾기",Margin=new(0,0,0,5)};Grid.SetColumn(browse,1);grid.Children.Add(browse);
             browse.Click+=(_,_)=>{ if(folder){var picker=new OpenFolderDialog();if(picker.ShowDialog(Window.GetWindow(this))==true)input.Text=picker.FolderName;}else{var picker=new OpenFileDialog{Filter="Windows 프로그램|*.exe"};if(picker.ShowDialog(Window.GetWindow(this))==true)input.Text=picker.FileName;} };
         }
-        parent.Children.Add(grid);
-        if(key is "editor" or "codex" or "auth")AddPathDiscovery(parent,key);
+        if(connection)AddPathDiscovery(parent,key,grid);else parent.Children.Add(grid);
     }
     private void Invalidate(){if(loading||disposed)return;formRevision++;frozen=null;options=null;preview.Clear();QueueInputSave();if(tool==ToolKind.Benchmark)UpdateBenchmarkSetup();else UpdateOperationControls();}
     private int formRevision;
@@ -181,7 +181,7 @@ public sealed partial class OperationPanel : UserControl,IDisposable
         {
             if(inputProblem is { } problem)ClearInputProblem(problem);
             if(!catalog.CanWrite)throw new InvalidOperationException("이 보관함이 읽기 전용입니다. 먼저 사용 중인 Desk를 확인하세요.");
-            if(!File.Exists(Value("editor")))throw new RunnerInputException("editor","Unity Editor 실행 파일을 찾을 수 없습니다. ‘찾기’에서 Unity.exe를 선택하세요.");
+            if(!File.Exists(Value("editor")))throw new RunnerInputException("editor","Unity Editor 실행 파일을 찾을 수 없습니다. ‘위치 확인 · 직접 지정’에서 Unity.exe를 선택하세요.");
             BenchmarkModes modes=tool==ToolKind.Benchmark?(fixedMode.IsChecked==true?BenchmarkModes.FixedCommands:0)|(aiMode.IsChecked==true?BenchmarkModes.AiCreation:0):BenchmarkModes.None;
             var selected=releases.SelectedItems.Cast<ReleaseRow>().ToArray();if(selected.Length==0)throw new InvalidOperationException("릴리스를 선택하세요.");
             var document=catalog.Document with {SelectedRelease=selected[0].Id};var draft=document.CreateDraft(tool,modes);draft.Releases.Clear();
@@ -195,7 +195,7 @@ public sealed partial class OperationPanel : UserControl,IDisposable
             {
                 if(!File.Exists(Value("codex")))throw new RunnerInputException("codex","Codex 실행 파일을 찾을 수 없습니다. 실행 파일 경로를 확인하세요.");
                 if(string.IsNullOrWhiteSpace(Value("model")))throw new RunnerInputException("model","AI 작업에 사용할 모델 ID를 입력하세요.");
-                if(!Directory.Exists(Value("auth")))throw new RunnerInputException("auth","인증이 설정된 전용 홈 폴더를 찾을 수 없습니다. 폴더 경로를 확인하세요.");
+                if(!File.Exists(Path.Combine(Value("auth"),"auth.json")))throw new RunnerInputException("auth","로그인 파일을 찾을 수 없습니다. ‘설정 방법’에서 안내를 확인하거나 auth.json이 있는 폴더를 선택하세요.");
                 profile=new(Value("codex"),Value("model"),Value("reasoning"),Value("auth"),Number("timeout"),Number("calls"),null,permission.IsChecked==true);profile.Validate();
                 draft.AiProfile=new(AiProfileId.New(),"Codex CLI",profile.Model,profile.Reasoning,null);
             }

@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Threading;
 using UnityBridgeDesk.Core.Models;
 using UnityBridgeDesk.Infrastructure.Benchmark;
+using UnityBridgeDesk.Infrastructure.Catalog;
 using UnityBridgeDesk.Infrastructure.Execution;
 using UnityBridgeDesk.Infrastructure.Storage;
 
@@ -79,8 +80,8 @@ public sealed partial class OperationPanel
         limits.Children.Add(balanced);limits.Children.Add(keepFailed);limits.Children.Add(keepSuccess);
         foreach(var box in new[]{balanced,keepFailed,keepSuccess})box.Click+=(_,_)=>Invalidate();
         benchmarkForm.Children.Add(new Expander{Header="세부 조건 · 시간 제한 · 복제본 보관",Content=limits,Margin=new(0,8,0,12)});
-        var aiForm=new StackPanel();Field(aiForm,"codex","Codex 실행 파일",true);Field(aiForm,"model","모델 ID");Field(aiForm,"reasoning","추론 수준",value:"medium");Field(aiForm,"auth","인증이 설정된 전용 홈",folder:true);Field(aiForm,"calls","AI 도구 호출 한도",value:"100");aiForm.Children.Add(permission);permission.Click+=(_,_)=>Invalidate();
-        aiSettings=new Expander{Header="AI 제작 연결 설정",Content=aiForm,Margin=new(0,8,0,12)};benchmarkForm.Children.Add(aiSettings);
+        var aiForm=new StackPanel();Field(aiForm,"codex","Codex 실행 파일",true);Field(aiForm,"auth","Codex 로그인 정보",folder:true);Field(aiForm,"model","모델 ID");Field(aiForm,"reasoning","추론 수준",value:"medium");Field(aiForm,"calls","AI 도구 호출 한도",value:"100");aiForm.Children.Add(permission);permission.Click+=(_,_)=>Invalidate();
+        aiSettings=new Expander{Header="AI 제작 연결 설정",IsExpanded=true,Content=aiForm,Margin=new(0,8,0,12)};benchmarkForm.Children.Add(aiSettings);
         var memo=new TextBox{Text=session.Drafts.BenchmarkNote,AcceptsReturn=true,TextWrapping=TextWrapping.Wrap,MinHeight=64,MaxLength=32000};
         memo.TextChanged+=(_,_)=>{session.SetDrafts(session.Drafts with{BenchmarkNote=memo.Text});Invalidate();};
         benchmarkForm.Children.Add(new Expander{Header="실험 메모",Content=memo,Margin=new(0,8,0,12)});
@@ -134,12 +135,19 @@ public sealed partial class OperationPanel
         var missing=new List<string>();
         var project=catalog.Document.Projects.FirstOrDefault(x=>x.Project.Id==catalog.Document.SelectedProject)?.Project;
         if(project is null)missing.Add("보관함에서 기준 프로젝트를 선택하세요.");
-        if(string.IsNullOrWhiteSpace(Value("editor"))||!File.Exists(Value("editor")))missing.Add("사용할 Unity Editor 실행 파일을 지정하세요.");
+        if(!File.Exists(Value("editor")))missing.Add("Unity Editor 카드에서 자동 확인 결과와 필요한 버전을 확인하세요.");
+        else if(project is not null&&LocalDiscovery.EditorVersion(Value("editor"))!=LocalDiscovery.ProjectVersion(project.RootPath))missing.Add("프로젝트와 Unity Editor 버전이 다릅니다. Editor 카드에서 맞는 버전을 선택하세요.");
         if(releases.SelectedItems.Count==0)missing.Add("비교할 버전을 하나 이상 선택하세요.");
         if(SelectedModes==BenchmarkModes.None)missing.Add("고정 명령 또는 AI 제작을 켜세요.");
         try{var spec=CurrentBenchOptions();int cases=spec.Cases(SelectedModes).Length;int count=cases*releases.SelectedItems.Count*spec.Repeats;if(count>1000)missing.Add("한 번에 1,000개 시행까지 가능합니다.");setupSummary.Text=$"{project?.DisplayName??"프로젝트 미선택"}\n{cases}개 조건 × {releases.SelectedItems.Count}개 버전 × 독립 {spec.Repeats}회 = {count}개 시행\n원본을 복제해 사용 · 환경 준비와 명령 시간은 별도 기록\nF01 첫 명령은 Unity 기동·컴파일이 끝난 뒤 측정합니다.";}
         catch(Exception error)when(error is FormatException or OverflowException or InvalidOperationException){missing.Add(error is RunnerInputException?error.Message:"켜 둔 방식의 실험과 반복·시간 제한 값을 확인하세요.");setupSummary.Text="실험과 유효한 반복 수를 선택하면 전체 시행 수가 표시됩니다.";}
-        if(aiMode.IsChecked==true&&(string.IsNullOrWhiteSpace(Value("model"))||!File.Exists(Value("codex"))||!Directory.Exists(Value("auth"))||permission.IsChecked!=true))missing.Add("AI 제작 연결 설정에서 모델·프로그램·인증 홈·권한을 확인하세요.");
+        if(aiMode.IsChecked==true)
+        {
+            if(!File.Exists(Value("codex")))missing.Add("AI 프로그램 카드에서 Codex 실행 파일을 연결하세요.");
+            if(!File.Exists(Path.Combine(Value("auth"),"auth.json")))missing.Add("Codex 로그인 정보 카드의 ‘설정 방법’을 확인하세요.");
+            if(string.IsNullOrWhiteSpace(Value("model")))missing.Add("AI 제작 연결 설정에서 사용할 모델 ID를 입력하세요.");
+            if(permission.IsChecked!=true)missing.Add("AI 작업에 필요한 파일 변경과 네트워크 사용 허용을 선택하세요.");
+        }
         setupGuide.Text=missing.Count>0?"다음 항목을 준비하세요.\n• "+string.Join("\n• ",missing):"준비 항목을 입력했어요. 아래 ‘구성 확인’으로 대상과 실행 조건을 검사하세요.";
         if(!string.IsNullOrWhiteSpace(preview.Text)&&frozen is null)setupGuide.Text+="\n최근 확인: "+preview.Text.Split('\n')[0];
         UpdateBenchmarkFooter();
