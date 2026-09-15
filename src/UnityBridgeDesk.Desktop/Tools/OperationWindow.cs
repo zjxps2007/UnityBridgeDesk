@@ -34,6 +34,7 @@ public sealed partial class OperationPanel : UserControl,IDisposable
     private readonly ToolKind tool;
     private readonly ShellSession session;
     private readonly LocalDiscovery localDiscovery;
+    private readonly BridgeEnvironmentSetup bridgeSetup;
     private readonly Dictionary<string,TextBox> fields=[];
     private readonly Dictionary<string,CheckBox> experiments=[];
     private readonly ListBox releases=new(){ SelectionMode=SelectionMode.Multiple,MinHeight=74,MaxHeight=150 };
@@ -58,10 +59,11 @@ public sealed partial class OperationPanel : UserControl,IDisposable
     private bool initialized;
     private sealed record ReleaseRow(ReleaseId Id,string Label){public override string ToString()=>Label;}
 
-    public OperationPanel(DeskRuntime runtime,CatalogService catalog,ToolKind tool,ShellSession session,LocalDiscovery? localDiscovery=null)
+    public OperationPanel(DeskRuntime runtime,CatalogService catalog,ToolKind tool,ShellSession session,LocalDiscovery? localDiscovery=null,BridgeEnvironmentSetup? bridgeSetup=null)
     {
         this.runtime=runtime;this.catalog=catalog;this.tool=tool;this.session=session;
         this.localDiscovery=localDiscovery??new LocalDiscovery();
+        this.bridgeSetup=bridgeSetup??new BridgeEnvironmentSetup(runtime.DataRoot);
         SetResourceReference(BackgroundProperty,"Paper"); FontFamily=new("Malgun Gothic");FontSize=12;
         settings=new(Path.Combine(runtime.DataRoot,"settings","runner-"+tool+".json"),value=>value.Validate());
         InitializeInteraction();
@@ -79,10 +81,10 @@ public sealed partial class OperationPanel : UserControl,IDisposable
         setup.Children.Add(Text(tool==ToolKind.Benchmark?"비교할 릴리스 · 여러 개 선택":"사용할 릴리스"));
         releases.SelectionMode=tool==ToolKind.Benchmark?SelectionMode.Multiple:SelectionMode.Single;
         foreach(var release in catalog.Document.Releases) releases.Items.Add(new ReleaseRow(release.Id,release.Label));
-        foreach(ReleaseRow release in releases.Items) if(release.Id==catalog.Document.SelectedRelease) releases.SelectedItems.Add(release);
+        SetReleaseSelection(catalog.Document.SelectedRelease is { } selectedRelease?[selectedRelease]:[]);
         releases.SelectionChanged+=(_,_)=>Invalidate();setup.Children.Add(releases);
         var refreshReleases=new Button{Content="보관함의 현재 선택 불러오기",HorizontalAlignment=HorizontalAlignment.Left};
-        refreshReleases.Click+=(_,_)=>{Invalidate();releases.Items.Clear();foreach(var release in catalog.Document.Releases){var row=new ReleaseRow(release.Id,release.Label);releases.Items.Add(row);if(release.Id==catalog.Document.SelectedRelease)releases.SelectedItems.Add(row);}};
+        refreshReleases.Click+=(_,_)=>{Invalidate();releases.Items.Clear();foreach(var release in catalog.Document.Releases)releases.Items.Add(new ReleaseRow(release.Id,release.Label));SetReleaseSelection(catalog.Document.SelectedRelease is { } id?[id]:[]);};
         setup.Children.Add(refreshReleases);
         if(tool==ToolKind.Benchmark)
         {
@@ -137,7 +139,7 @@ public sealed partial class OperationPanel : UserControl,IDisposable
         runtime.Changed+=RuntimeChanged;
         Loaded+=async(_,_)=>{if(initialized||disposed)return;initialized=true;try{await LoadSettings();await ResolveLocalSetupAsync();await RefreshHistory(requestedHistoryRun);}catch(Exception error)when(error is IOException or JsonException or UnauthorizedAccessException){preview.Text="저장된 설정을 확인해 주세요: "+error.Message;}finally{loading=false;if(inputDirty)QueueInputSave();UpdateOperationControls();}};
     }
-    public void Dispose(){runtime.Changed-=RuntimeChanged;DisposeBenchmark();DisposeInteraction();}
+    public void Dispose(){bridgeSetupCancellation?.Cancel();runtime.Changed-=RuntimeChanged;DisposeBenchmark();DisposeInteraction();}
     private static TextBlock Text(string value,double size=12)=>new(){Text=value,FontSize=size,TextWrapping=TextWrapping.Wrap,Margin=new(0,5,0,8)};
     private void Field(Panel parent,string key,string label,bool file=false,bool folder=false,string value="")
     {
@@ -153,7 +155,7 @@ public sealed partial class OperationPanel : UserControl,IDisposable
         }
         if(connection)AddPathDiscovery(parent,key,grid);else parent.Children.Add(grid);
     }
-    private void Invalidate(){if(loading||disposed)return;formRevision++;frozen=null;options=null;preview.Clear();QueueInputSave();if(tool==ToolKind.Benchmark)UpdateBenchmarkSetup();else UpdateOperationControls();}
+    private void Invalidate(){if(loading||disposed)return;InvalidateBridgeReadiness();formRevision++;frozen=null;options=null;preview.Clear();QueueInputSave();if(tool==ToolKind.Benchmark)UpdateBenchmarkSetup();else UpdateOperationControls();}
     private int formRevision;
     private int Number(string key)=>RunnerInput.Integer(key,fields[key].Text);
     private string Value(string key)=>fields[key].Text.Trim().Trim('"');

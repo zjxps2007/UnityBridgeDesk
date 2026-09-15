@@ -43,7 +43,8 @@ public sealed partial class OperationPanel
         surface.Children.Add(tabs);
         tabs.Items.Add(new TabItem{Header="1  준비",Content=Scroll(benchmarkForm)});
         benchmarkForm.Children.Add(Text("같은 조건으로 버전을 비교하세요.",20));
-        benchmarkForm.Children.Add(Text("프로젝트와 버전 선택 → 구성 확인 → 시행 시작. 완료하면 결과 화면이 자동으로 열립니다."));
+        benchmarkForm.Children.Add(Text("환경 자동 준비 → 시행 시작. 다른 버전과 실험은 직접 선택할 수 있습니다. 완료하면 결과 화면이 자동으로 열립니다."));
+        BuildBridgeSetupCard();
         benchmarkForm.Children.Add(Card(setupGuide,"Tint"));
         var shortcuts=new WrapPanel{Margin=new(0,8,0,10)};
         shortcuts.Children.Add(ActionButton("프로젝트·버전 보관함",()=>CatalogRequested?.Invoke()));
@@ -122,7 +123,7 @@ public sealed partial class OperationPanel
     private BenchmarkModes SelectedModes=>(fixedMode.IsChecked==true?BenchmarkModes.FixedCommands:0)|(aiMode.IsChecked==true?BenchmarkModes.AiCreation:0);
     private void UseResponsePreset()
     {
-        if(benchmarkBusy)return;
+        if(benchmarkBusy||bridgeSetupBusy)return;
         loading=true;fixedMode.IsChecked=true;aiMode.IsChecked=false;foreach(var pair in experiments)pair.Value.IsChecked=pair.Key=="F01";
         fields["repeats"].Text="2";fields["warmups"].Text="1";fields["inner"].Text="3";loading=false;
         BenchmarkModesChanged(this,new RoutedEventArgs());
@@ -158,7 +159,10 @@ public sealed partial class OperationPanel
         if(aiSettings is null)return;
         benchmarkStop.Visibility=benchmarkBusy?Visibility.Visible:Visibility.Collapsed;benchmarkStop.IsEnabled=!stopRequested;
         benchmarkForm.IsEnabled=!loading&&!benchmarkBusy&&!benchmarkReviewBusy;
-        benchmarkPrimary.IsEnabled=!loading&&!benchmarkBusy&&!benchmarkReviewBusy;
+        foreach(UIElement child in benchmarkForm.Children)child.IsEnabled=!bridgeSetupBusy||ReferenceEquals(child,bridgeSetupCard);
+        UpdateBridgeSetupControls();
+        benchmarkPrimary.IsEnabled=!loading&&!benchmarkBusy&&!benchmarkReviewBusy&&!bridgeSetupBusy;
+        if(bridgeSetupBusy){benchmarkPrimary.Content="환경 준비 중…";footerHint.Text="CLI·Connector를 확인하고 있어요. 위 카드에서 준비를 취소할 수 있습니다.";return;}
         if(benchmarkBusy){benchmarkPrimary.Content=stopRequested?"정리 중…":"진행 중";footerHint.Text="다른 탭을 보아도 작업은 계속됩니다.";return;}
         if(tabs.SelectedIndex==2){benchmarkPrimary.Content="새 벤치 준비";footerHint.Text="성공 여부 → 조건별 시간 → 표본 수 순서로 확인하세요.";return;}
         if(tabs.SelectedIndex==1){benchmarkPrimary.Content="준비로 돌아가기";footerHint.Text="완료 후 결과는 ‘3 결과’에서 다시 볼 수 있어요.";return;}
@@ -167,7 +171,7 @@ public sealed partial class OperationPanel
     }
     private async void BenchmarkPrimaryClick(object sender,RoutedEventArgs e)
     {
-        if(benchmarkBusy||benchmarkReviewBusy||loading)return;
+        if(benchmarkBusy||benchmarkReviewBusy||bridgeSetupBusy||loading)return;
         if(tabs.SelectedIndex!=0){tabs.SelectedIndex=0;return;}
         if(frozen is null||options is null)
         {

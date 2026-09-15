@@ -24,6 +24,7 @@ namespace UnityBridgeDesk.Desktop.Tests;
 [DoNotParallelize]
 public sealed class RenderTests
 {
+    [ThreadStatic] private static Exception? dispatcherFailure;
     [TestMethod]
     public async Task ActualWpfControlsRenderKoreanAtThreeDpiScalesAndKeepNativeInput()
     {
@@ -31,10 +32,16 @@ public sealed class RenderTests
         var directory = SampleData.TestDirectory();
         var thread = new Thread(() =>
         {
+            Exception? failure=null;
+            Application? app=null;
+            var dispatcher=Dispatcher.CurrentDispatcher;
+            SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(dispatcher));
+            // Async UI exceptions belong in the failed test result, not an unhandled testhost crash.
+            dispatcher.UnhandledException+=(_,e)=>{dispatcherFailure??=e.Exception;e.Handled=true;};
             try
             {
                 // Only load the visual resources. Never run App.OnStartup against the user's data.
-                var app = new Application { ShutdownMode=ShutdownMode.OnExplicitShutdown };
+                app = new Application { ShutdownMode=ShutdownMode.OnExplicitShutdown };
                 app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source=new Uri("/UnityBridgeDesk;component/Themes/Controls.xaml",UriKind.Relative) });
                 var session = new ShellSession();
                 foreach (var palette in Enum.GetValues<DeskPalette>())
@@ -58,12 +65,12 @@ public sealed class RenderTests
                     }
                 }
                 using var catalog = new CatalogService(Path.Combine(directory, "catalog-render"));
-                catalog.LoadAsync().GetAwaiter().GetResult();
+                Complete(catalog.LoadAsync());
                 string projectPath = Path.Combine(directory, "한글 경로 UI 시험");
                 foreach (string folder in new[] { "Assets", "Packages", "ProjectSettings" }) Directory.CreateDirectory(Path.Combine(projectPath, folder));
-                catalog.RegisterProjectAsync(projectPath, "파스텔 실험실 · UI 시험").GetAwaiter().GetResult();
+                Complete(catalog.RegisterProjectAsync(projectPath, "파스텔 실험실 · UI 시험"));
                 var project = catalog.Document.Projects.Single().Project;
-                catalog.SelectProjectAsync(project.Id).GetAwaiter().GetResult();
+                Complete(catalog.SelectProjectAsync(project.Id));
                 var target = TargetSummary.From(catalog.Document);
                 foreach (var tool in new[] { ToolKind.Installation, ToolKind.AiWork, ToolKind.Benchmark })
                 {
@@ -112,14 +119,17 @@ public sealed class RenderTests
                 VerifyOperationActions(directory);
                 VerifyDiscoveredPaths(directory);
                 VerifyAmbiguousPaths(directory);
+                VerifyReleaseSelectionRestoration(directory);
+                VerifyAutomaticBridgeSetup(directory);
                 // Exercise the real shell with legacy floating layouts and a cached execution view.
                 string tabRoot = Path.Combine(directory, "tab-shell");
-                var storage = new ShellPersistence(tabRoot);
-                var loaded = storage.LoadAsync().GetAwaiter().GetResult();
+                var delayedFiles = new DeferredWrites();
+                var storage = new ShellPersistence(tabRoot,delayedFiles);
+                var loaded = Complete(storage.LoadAsync());
                 var tabSession = loaded.CreateSession();
                 tabSession=new ShellSession(tabSession.Preferences with{PanelBounds=tabSession.Preferences.PanelBounds.SetItem(ToolKind.Benchmark,new(100,80,560,300))},tabSession.Drafts);
                 tabSession.Open(ToolKind.AiWork); tabSession.MoveToWorkspace(ToolKind.AiWork, 2); tabSession.Minimize(ToolKind.AiWork);
-                var tabCatalog = new CatalogService(tabRoot); tabCatalog.LoadAsync().GetAwaiter().GetResult();
+                var tabCatalog = new CatalogService(tabRoot); Complete(tabCatalog.LoadAsync());
                 var main = new MainWindow(tabSession, storage, loaded, tabCatalog);
                 var rootGrid = (Grid)main.FindName("RootGrid");
                 var toolTabs = (TabControl)main.FindName("ToolTabs");
@@ -195,13 +205,28 @@ public sealed class RenderTests
                 Assert.IsNull(bench.FindName("PanelPinButton"));
                 Assert.IsNull(bench.FindName("PanelHideButton"));
                 Assert.AreSame(executionInput,((ContentControl)bench.FindName("ExecutionHost")).Content);
-                main.Close();
-                app.Shutdown(); finished.SetResult();
+                // Make shutdown overlap an unfinished disk write, regardless of disk speed.
+                bool closed=false;main.Closed+=(_,_)=>closed=true;
+                delayedFiles.Block=true;
+                main.Close();PumpUntil(()=>delayedFiles.Waiting);
+                Assert.IsFalse(closed,"The window must wait for pending saves before closing.");
+                delayedFiles.Release();PumpUntil(()=>closed);
+                var restored=Complete(new ShellPersistence(tabRoot).LoadAsync()).CreateSession();
+                Assert.AreEqual(tabSession.Drafts.AiPrompt,restored.Drafts.AiPrompt);
             }
-            catch (Exception error) { finished.SetException(error); }
+            catch (Exception error) { failure=error; }
+            finally
+            {
+                try{app?.Shutdown();dispatcher.InvokeShutdown();}
+                catch(Exception error){failure??=error;}
+                SynchronizationContext.SetSynchronizationContext(null);
+            }
+            failure??=dispatcherFailure;
+            if(failure is null)finished.TrySetResult();else finished.TrySetException(failure);
         });
         thread.IsBackground = true; thread.SetApartmentState(ApartmentState.STA); thread.Start();
-        await finished.Task.WaitAsync(TimeSpan.FromSeconds(60));
+        try{await finished.Task.WaitAsync(TimeSpan.FromSeconds(60));}
+        finally{Assert.IsTrue(thread.Join(TimeSpan.FromSeconds(5)),"WPF test thread must exit before testhost teardown.");}
         Console.WriteLine("WPF render evidence: " + directory);
     }
 
@@ -237,7 +262,7 @@ public sealed class RenderTests
         var failed=RunId.New();
         new AtomicJsonStore<RunStatus>(Path.Combine(root,"runs",failed.Value.ToString("N"),"status.json"),_=>{})
             .SaveAsync(new(failed,ToolKind.Benchmark,"failed-fixture","실패",DateTimeOffset.UtcNow.AddMinutes(-1),"준비 확인 실패 · 합성 기록" )).GetAwaiter().GetResult();
-        using var catalog=new CatalogService(root);catalog.LoadAsync().GetAwaiter().GetResult();
+        using var catalog=new CatalogService(root);Complete(catalog.LoadAsync());
         var runtime=new DeskRuntime(root,new WorkerRunner(Path.Combine(root,"never-executed.exe")));
         using var panel=new OperationPanel(runtime,catalog,ToolKind.Benchmark,new ShellSession());
         var surface=(DockPanel)panel.Content;var tabs=surface.Children.OfType<TabControl>().Single();
@@ -285,9 +310,9 @@ public sealed class RenderTests
     private static void VerifySidebar(string directory)
     {
         string root=Path.Combine(directory,"guided-results");
-        var storage=new ShellPersistence(root);var loaded=storage.LoadAsync().GetAwaiter().GetResult();
+        var storage=new ShellPersistence(root);var loaded=Complete(storage.LoadAsync());
         var session=loaded.CreateSession();
-        var catalog=new CatalogService(root);catalog.LoadAsync().GetAwaiter().GetResult();
+        var catalog=new CatalogService(root);Complete(catalog.LoadAsync());
         var runtime=new DeskRuntime(root,new WorkerRunner(Path.Combine(root,"never-executed.exe")));
         var before=SynchronizationContext.Current;
         SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
@@ -343,7 +368,7 @@ public sealed class RenderTests
             foreach(var tool in new[]{ToolKind.Installation,ToolKind.AiWork})
             {
                 string root=Path.Combine(directory,"fixed-actions-"+tool);
-                using var catalog=new CatalogService(root);catalog.LoadAsync().GetAwaiter().GetResult();
+                using var catalog=new CatalogService(root);Complete(catalog.LoadAsync());
                 var runtime=new DeskRuntime(root,new WorkerRunner(Path.Combine(root,"never-executed.exe")));
                 using var panel=new OperationPanel(runtime,catalog,tool,new ShellSession());
                 panel.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent));
@@ -376,7 +401,7 @@ public sealed class RenderTests
             string executable=Path.Combine(native,"codex.exe");File.WriteAllText(executable,"synthetic path fixture, never executed");
             File.WriteAllText(Path.Combine(home,"auth.json"),"not read by discovery");
             var scanner=new LocalDiscovery(new(Path.Combine(root,"home"),Path.Combine(root,"roaming"),Path.Combine(root,"local"),Path.Combine(root,"programs"),Path.Combine(root,"app"),native));
-            using var catalog=new CatalogService(root);catalog.LoadAsync().GetAwaiter().GetResult();
+            using var catalog=new CatalogService(root);Complete(catalog.LoadAsync());
             var runtime=new DeskRuntime(root,new WorkerRunner(Path.Combine(root,"never-executed.exe")));
             using var panel=new OperationPanel(runtime,catalog,ToolKind.AiWork,new ShellSession(),scanner);
             panel.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent));
@@ -416,7 +441,7 @@ public sealed class RenderTests
             string bin=Path.Combine(root,"local","OpenAI","Codex","bin");
             foreach(string version in new[]{"first-build","second-build"})
             {string path=Path.Combine(bin,version);Directory.CreateDirectory(path);File.WriteAllText(Path.Combine(path,"codex.exe"),"fixture");}
-            using var catalog=new CatalogService(root);catalog.LoadAsync().GetAwaiter().GetResult();
+            using var catalog=new CatalogService(root);Complete(catalog.LoadAsync());
             var runtime=new DeskRuntime(root,new WorkerRunner(Path.Combine(root,"never-executed.exe")));
             var scanner=new LocalDiscovery(new(Path.Combine(root,"home"),Path.Combine(root,"roaming"),Path.Combine(root,"local"),Path.Combine(root,"programs"),Path.Combine(root,"app"),""));
             using var panel=new OperationPanel(runtime,catalog,ToolKind.AiWork,new ShellSession(),scanner);
@@ -441,6 +466,108 @@ public sealed class RenderTests
         }
         finally{SynchronizationContext.SetSynchronizationContext(before);}
     }
+    private static void VerifyReleaseSelectionRestoration(string directory)
+    {
+        foreach(var kind in new[]{ToolKind.Installation,ToolKind.AiWork,ToolKind.Benchmark})
+        {
+            string root=Path.Combine(directory,"release-selection-"+kind);
+            var observation=new ArtifactObservation(InspectionStatus.Missing,"selection fixture",DateTimeOffset.UtcNow,null,null,null,null,null);
+            var a=new CatalogArtifact(Guid.NewGuid(),"CLI A",ArtifactKind.CliExecutable,Path.Combine(root,"missing-a.exe"),observation,observation);
+            var b=new CatalogArtifact(Guid.NewGuid(),"CLI B",ArtifactKind.CliExecutable,Path.Combine(root,"missing-b.exe"),observation,observation);
+            var first=new CatalogRelease(ReleaseId.New(),"Release A",ComparisonAxis.CliOnly,a.Id,null);
+            var second=new CatalogRelease(ReleaseId.New(),"Release B",ComparisonAxis.CliOnly,b.Id,null);
+            var document=CatalogDocument.Empty with{Artifacts=[a,b],Releases=[first,second],SelectedRelease=first.Id};
+            Complete(new AtomicJsonStore<CatalogDocument>(Path.Combine(root,"catalog","catalog.json"),x=>x.Validate()).SaveAsync(document));
+            using var catalog=new CatalogService(root);Complete(catalog.LoadAsync());
+            var runtime=new DeskRuntime(root,new WorkerRunner(Path.Combine(root,"never-executed.exe")));
+            var scanner=new LocalDiscovery(new(Path.Combine(root,"home"),Path.Combine(root,"roaming"),Path.Combine(root,"local"),Path.Combine(root,"programs"),Path.Combine(root,"app"),""));
+            ListBox List(OperationPanel panel)=>Descendants(panel).OfType<ListBox>().Single(x=>x.Items.Count==2&&x.Items[0].ToString()=="Release A");
+            void Load(OperationPanel panel)
+            {
+                panel.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent));
+                var primary=Descendants(panel).OfType<Button>().Single(x=>AutomationProperties.GetAutomationId(x)==(kind==ToolKind.Benchmark?"BenchmarkPrimary":"OperationPrimary"));
+                PumpUntil(()=>primary.IsEnabled);
+            }
+            using(var panel=new OperationPanel(runtime,catalog,kind,new ShellSession(),scanner))
+            {
+                Load(panel);Assert.AreEqual("Release A",List(panel).SelectedItem?.ToString());
+                if(kind==ToolKind.Benchmark)List(panel).SelectedItems.Add(List(panel).Items[1]);
+                else
+                {
+                    Assert.IsTrue(Complete(catalog.SelectReleaseAsync(second.Id)).Success);
+                    Assert.AreEqual("Release B",List(panel).SelectedItem?.ToString());
+                    Descendants(panel).OfType<Button>().Single(x=>x.Content?.ToString()=="보관함의 현재 선택 불러오기").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Assert.AreEqual("Release B",List(panel).SelectedItem?.ToString());
+                }
+                Assert.IsTrue(Complete(panel.FlushInputAsync()));
+            }
+            using(var restored=new OperationPanel(runtime,catalog,kind,new ShellSession(),scanner))
+            {
+                Load(restored);
+                Assert.AreEqual(kind==ToolKind.Benchmark?2:1,List(restored).SelectedItems.Count);
+                if(kind!=ToolKind.Benchmark)Assert.AreEqual("Release B",List(restored).SelectedItem?.ToString());
+            }
+            Assert.IsFalse(runtime.IsRunning);
+        }
+    }
+    private static void VerifyAutomaticBridgeSetup(string directory)
+    {
+        foreach(bool ambiguous in new[]{false,true})
+        {
+            string root=Path.Combine(directory,"bridge-auto-"+ambiguous), app=Path.Combine(root,"app");
+            var definitions=new List<BridgeSetupRelease>();
+            foreach(string version in new[]{"0.2.0","0.2.1"})
+            {
+                string folder=Path.Combine(app,version);Directory.CreateDirectory(folder);
+                string cli=Path.Combine(folder,"unity-bridge.exe");File.Copy(Environment.ProcessPath!,cli);
+                string connector=Path.Combine(folder,"unity-bridge-connector");Directory.CreateDirectory(connector);
+                File.WriteAllText(Path.Combine(connector,"package.json"),System.Text.Json.JsonSerializer.Serialize(new{name=LocalInspector.ConnectorPackageName,version}));
+                var inspector=new LocalInspector();
+                definitions.Add(new(version,Complete(inspector.InspectArtifactAsync(cli,ArtifactKind.CliExecutable)).Sha256!,
+                    Complete(inspector.InspectArtifactAsync(connector,ArtifactKind.ConnectorFolder)).Sha256!,new string('a',40)));
+            }
+            string projects=Path.Combine(root,"home","Unity Projects");
+            foreach(string name in ambiguous?new[]{"project-a","project-b"}:new[]{"project-a"})
+            {
+                string path=Path.Combine(projects,name);
+                foreach(string part in new[]{"Assets","Packages","ProjectSettings"})Directory.CreateDirectory(Path.Combine(path,part));
+                File.WriteAllText(Path.Combine(path,"Packages","manifest.json"),"{\"dependencies\":{}}");
+                File.WriteAllText(Path.Combine(path,"ProjectSettings","ProjectVersion.txt"),"m_EditorVersion: 6000.3.23f1");
+            }
+            var scanner=new LocalDiscovery(new(Path.Combine(root,"home"),Path.Combine(root,"roaming"),Path.Combine(root,"local"),Path.Combine(root,"programs"),app,""));
+            using var client=new System.Net.Http.HttpClient(new NoSetupNetwork());
+            using var catalog=new CatalogService(Path.Combine(root,"data"));Complete(catalog.LoadAsync());
+            var runtime=new DeskRuntime(catalog.DataRoot,new WorkerRunner(Path.Combine(root,"never-executed.exe")));
+            using var panel=new OperationPanel(runtime,catalog,ToolKind.Benchmark,new ShellSession(),scanner,new BridgeEnvironmentSetup(catalog.DataRoot,client,definitions));
+            panel.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent));
+            var prepare=Descendants(panel).OfType<Button>().Single(x=>AutomationProperties.GetAutomationId(x)=="BridgeAutoSetup");
+            var status=Descendants(panel).OfType<TextBlock>().Single(x=>AutomationProperties.GetAutomationId(x)=="BridgeAutoSetupStatus");
+            var primary=Descendants(panel).OfType<Button>().Single(x=>AutomationProperties.GetAutomationId(x)=="BenchmarkPrimary");
+            PumpUntil(()=>prepare.IsEnabled);
+            prepare.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Assert.IsFalse(primary.IsEnabled);
+            PumpUntil(()=>prepare.IsEnabled);
+            Assert.StartsWith("CLI·Connector 준비 완료",status.Text);
+            Assert.AreEqual(2,catalog.Document.Releases.Length);
+            var list=Descendants(panel).OfType<ListBox>().Single(x=>x.Items.Count==2&&x.Items[0].ToString()=="UnityBridge 0.2.0");
+            Assert.AreEqual(2,list.SelectedItems.Count);
+            Assert.AreEqual("구성 확인",primary.Content,"Missing Editor must not be presented as ready to run.");
+            if(ambiguous){Assert.IsNull(catalog.Document.SelectedProject);Assert.Contains("프로젝트 선택",status.Text);}
+            else Assert.IsNotNull(catalog.Document.SelectedProject);
+            Assert.IsFalse(runtime.IsRunning);Assert.IsFalse(Directory.Exists(Path.Combine(catalog.DataRoot,"workspaces")));
+            Assert.IsTrue(catalog.Document.Artifacts.All(x=>x.Path.StartsWith(Path.Combine(catalog.DataRoot,"releases"))));
+            Assert.AreEqual("{\"dependencies\":{}}",File.ReadAllText(Path.Combine(projects,"project-a","Packages","manifest.json")));
+            prepare.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));PumpUntil(()=>prepare.IsEnabled);
+            Assert.AreEqual(2,catalog.Document.Releases.Length);
+            panel.Width=680;panel.Height=620;panel.Measure(new Size(680,620));panel.Arrange(new Rect(0,0,680,620));panel.UpdateLayout();
+            var bitmap=new RenderTargetBitmap(1020,930,144,144,PixelFormats.Pbgra32);bitmap.Render(panel);
+            var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            using var file=File.Create(Path.Combine(directory,"bridge-auto-"+ambiguous+"-150.png"));encoder.Save(file);
+        }
+    }
+    private sealed class NoSetupNetwork : System.Net.Http.HttpMessageHandler
+    {
+        protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request,CancellationToken ct)=>throw new InvalidOperationException("Synthetic UI setup must use local fixtures.");
+    }
     private static IEnumerable<string> Labels(DependencyObject parent)
     {
         if(parent is TextBlock text)yield return text.Text;
@@ -457,9 +584,26 @@ public sealed class RenderTests
     {
         var clock=Stopwatch.StartNew();var frame=new DispatcherFrame();
         var timer=new DispatcherTimer(DispatcherPriority.Background){Interval=TimeSpan.FromMilliseconds(10)};
-        timer.Tick+=(_,_)=>{if(condition()||clock.Elapsed>TimeSpan.FromSeconds(10))frame.Continue=false;};
+        timer.Tick+=(_,_)=>{if(condition()||dispatcherFailure is not null||clock.Elapsed>TimeSpan.FromSeconds(10))frame.Continue=false;};
         timer.Start();try{Dispatcher.PushFrame(frame);}finally{timer.Stop();}
+        if(dispatcherFailure is not null)System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(dispatcherFailure).Throw();
         Assert.IsTrue(condition(),"비동기 결과 화면이 제한 시간 안에 갱신되어야 합니다.");
+    }
+    private static void Complete(Task task){PumpUntil(()=>task.IsCompleted);task.GetAwaiter().GetResult();}
+    private static T Complete<T>(Task<T> task){PumpUntil(()=>task.IsCompleted);return task.GetAwaiter().GetResult();}
+    private sealed class DeferredWrites : IAtomicFileOperations
+    {
+        private readonly AtomicFileOperations actual=new();
+        private readonly TaskCompletionSource release=new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public bool Block { get; set; }
+        public bool Waiting { get; private set; }
+        public void Release()=>release.TrySetResult();
+        public async Task WriteNewAndFlushAsync(string path,ReadOnlyMemory<byte> bytes,CancellationToken ct)
+        {
+            if(Block){Waiting=true;await release.Task.WaitAsync(ct);}
+            await actual.WriteNewAndFlushAsync(path,bytes,ct);
+        }
+        public void Commit(string temporary,string destination,string? backup)=>actual.Commit(temporary,destination,backup);
     }
 }
 

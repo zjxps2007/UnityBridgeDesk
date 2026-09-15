@@ -112,6 +112,7 @@ public sealed class LocalDiscovery(DiscoveryLocations locations)
         if (configuredPaths is not null)
             foreach (var pair in configuredPaths.Take(100)) Inspect(pair.Value, "이전에 지정한 위치", pair.Key);
         foreach (string path in rememberedPaths.Take(100)) Inspect(path, "이전에 지정한 위치");
+        Walk(System.IO.Path.Combine(locations.Local, "UnityBridgeDesk", "releases"), 3, "Desk 버전 보관함");
         foreach (var project in catalog.Projects) Inspect(project.Project.RootPath, "보관함");
         foreach (var artifact in catalog.Artifacts)
         {

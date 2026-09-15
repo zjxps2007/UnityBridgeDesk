@@ -165,6 +165,7 @@ public sealed partial class OperationPanel
             {
                 foreach(var button in pathFinders){button.IsEnabled=true;button.Content="다시 찾기";}
                 if(generation!=setupGeneration)await ResolveLocalSetupAsync();
+                if(tool==ToolKind.Benchmark)UpdateBenchmarkFooter();
             }
         }
     }
@@ -180,13 +181,13 @@ public sealed partial class OperationPanel
             foreach(var release in catalog.Document.Releases)
             {
                 var row=new ReleaseRow(release.Id,release.Label);releases.Items.Add(row);
-                if(useShared?row.Id==catalog.Document.SelectedRelease:selected.Contains(row.Id))releases.SelectedItems.Add(row);
             }
+            SetReleaseSelection(useShared?(catalog.Document.SelectedRelease is { } id?[id]:[]):selected);
             setupRelease=catalog.Document.SelectedRelease;loading=prior;Invalidate();
         }
         if(setupProject==catalog.Document.SelectedProject)return;
         setupGeneration++;
-        if(!operationBusy&&!benchmarkBusy){Invalidate();await ResolveLocalSetupAsync();}
+        if(!operationBusy&&!benchmarkBusy&&!bridgeSetupBusy){Invalidate();await ResolveLocalSetupAsync();}
     }
     private async Task RememberInputPathsAsync()
     {

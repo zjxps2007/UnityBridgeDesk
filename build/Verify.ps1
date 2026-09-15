@@ -28,10 +28,17 @@ try {
     }
     if ($Restore) { Invoke-DeskDotnet @('restore', 'UnityBridgeDesk.slnx', '--locked-mode') }
     Invoke-DeskDotnet @('build', 'UnityBridgeDesk.slnx', '--no-restore', '--configuration', $Configuration)
+    $deskDiagnostics = Join-Path $deskRoot ('.cache/test-diagnostics/' + [Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $deskDiagnostics -Force | Out-Null
     foreach ($component in @('Core', 'Infrastructure', 'Desktop')) {
         $project = "tests/UnityBridgeDesk.$component.Tests/UnityBridgeDesk.$component.Tests.csproj"
+        $deskDiagnostic = Join-Path $deskDiagnostics "$component.log"
         Invoke-DeskDotnet @('test', $project, '--no-build', '--no-restore', '--configuration', $Configuration,
-            '--logger', "trx;LogFileName=$component.$Configuration.trx", '--results-directory', 'TestResults')
+            '--logger', "trx;LogFileName=$component.$Configuration.trx", '--results-directory', 'TestResults', '--diag', $deskDiagnostic)
+        # VSTest can return 0 after reporting all tests while the host crashes during teardown.
+        if (Select-String -LiteralPath $deskDiagnostic -Pattern 'Test host standard error line: (Unhandled exception\.|Fatal error\.)' -Quiet) {
+            throw "The test host reported an unhandled error during teardown. Diagnostics: $deskDiagnostic"
+        }
     }
 }
 finally {

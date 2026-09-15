@@ -16,11 +16,11 @@ public sealed class ShellPersistence
     private bool futurePreferences;
     private bool futureDrafts;
 
-    public ShellPersistence(string dataRoot)
+    public ShellPersistence(string dataRoot, IAtomicFileOperations? files = null)
     {
         if (!Path.IsPathFullyQualified(dataRoot)) throw new ArgumentException("Data directory must be absolute.");
-        preferences = new(Path.Combine(dataRoot, "settings", "shell.json"), x => x.Validate());
-        drafts = new(Path.Combine(dataRoot, "drafts", "desk.json"), x => x.Validate());
+        preferences = new(Path.Combine(dataRoot, "settings", "shell.json"), x => x.Validate(), files);
+        drafts = new(Path.Combine(dataRoot, "drafts", "desk.json"), x => x.Validate(), files);
     }
     public async Task<ShellLoadResult> LoadAsync()
     {

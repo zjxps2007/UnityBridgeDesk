@@ -25,6 +25,29 @@ pwsh -File ./build/Export-Source.ps1 -OutputDirectory 'C:/Repositories/UnityBrid
 
 ## 첫 커밋 예시
 
+아직 업로드하지 않은 첫 공개라면 GitHub Desktop의 Summary와 Description에 다음 내용을 사용할 수 있습니다. 기존 버전의 수정 이력이 아닌 현재 포함된 기능을 설명합니다.
+
+**Summary**
+
+```text
+feat: UnityBridge Desk 최초 공개
+```
+
+**Description**
+
+```text
+UnityBridge 설치·관리, AI 작업, 버전별 벤치마크를 통합한 Windows 데스크톱 앱입니다.
+
+- 파스텔 테마와 탭 기반 작업 화면 제공
+- UnityBridge 0.2.0·0.2.1 CLI·Connector 자동 검색·다운로드·검증·등록
+- 버전별 파일 보관과 Unity Editor 자동 연결
+- 고정 명령·AI 제작 벤치 선택 및 독립 복제 환경에서 비교
+- 진행 상태·결과 확인과 JSON·CSV 내보내기
+- 사용·개발 문서, MIT 라이선스와 GitHub Actions 검사 구성 포함
+
+검증: 로컬 자동 검사 149개 통과. 공식 파일 다운로드, 오프라인 재사용과 준비 완료 화면 확인.
+```
+
 GitHub에서 빈 저장소를 만든 뒤 정리한 소스 폴더 안에서 실행합니다. 마지막 두 줄의 URL은 본인 저장소 주소로 바꾸세요.
 
 ```powershell
@@ -40,7 +63,7 @@ git push -u origin main
 
 ## .gitignore에 포함한 제외 항목
 
-빌드 폴더(`bin`, `obj`), `.cache`, `dist`, 테스트 산출물, 실행 기록과 복제본, 개인 설정·인증 파일, 로컬 설계 이력과 진단 기록을 제외합니다. `packages.lock.json`, `.csproj`, `.xaml`, 아이콘·배경 자산과 빌드 스크립트는 포함합니다.
+빌드 폴더(`bin`, `obj`), `.cache`, `dist`, 테스트 산출물, 실행 기록과 복제본, 개인 설정·인증 파일, 자동으로 받은 버전 보관 폴더(`releases`), 로컬 설계 이력과 진단 기록을 제외합니다. `packages.lock.json`, `.csproj`, `.xaml`, 아이콘·배경 자산과 빌드 스크립트는 포함합니다.
 
 `.gitignore`는 Git이 아직 추적하지 않는 파일에 적용됩니다. 이미 커밋된 개인 파일이나 웹에서 직접 선택한 업로드 파일을 정리해 주는 기능은 아닙니다. 처음에는 위 명령으로 만든 깨끗한 소스 폴더를 사용하는 편이 명확합니다.
 

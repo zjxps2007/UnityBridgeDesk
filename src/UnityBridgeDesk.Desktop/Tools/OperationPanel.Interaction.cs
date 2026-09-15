@@ -77,10 +77,20 @@ public sealed partial class OperationPanel
             return;
         }
         foreach(var (key,value) in draft.Fields)if(fields.TryGetValue(key,out var input))input.Text=value;
-        releases.SelectedItems.Clear();
-        foreach(ReleaseRow row in releases.Items)if(draft.Releases.Contains(row.Id))releases.SelectedItems.Add(row);
+        SetReleaseSelection(draft.Releases);
         foreach(var (id,box) in experiments)box.IsChecked=draft.Experiments.Contains(id);
         balanced.IsChecked=draft.Balanced;keepFailed.IsChecked=draft.KeepFailed;keepSuccess.IsChecked=draft.KeepSuccessful;
+    }
+    private void SetReleaseSelection(IEnumerable<ReleaseId> ids)
+    {
+        var selected=ids.ToHashSet();
+        if(releases.SelectionMode==SelectionMode.Single)
+            releases.SelectedItem=releases.Items.Cast<ReleaseRow>().FirstOrDefault(row=>selected.Contains(row.Id));
+        else
+        {
+            releases.SelectedItems.Clear();
+            foreach(ReleaseRow row in releases.Items)if(selected.Contains(row.Id))releases.SelectedItems.Add(row);
+        }
     }
     private void ShowInputProblem(string key,string message)
     {

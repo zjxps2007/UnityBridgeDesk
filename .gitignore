@@ -36,6 +36,7 @@ Desktop.ini
 /catalog/
 /drafts/
 /packages/
+/releases/
 /private-ai/
 *.jsonl
 *.log
