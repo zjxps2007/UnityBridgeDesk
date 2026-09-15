@@ -4,6 +4,12 @@ $deskRoot = Split-Path -Parent $PSScriptRoot
 $deskPackage = (Resolve-Path -LiteralPath $PackagePath).Path
 $deskApp = Join-Path $deskPackage 'app'
 $deskManifest = Get-Content -LiteralPath (Join-Path $deskApp 'distribution.json') -Raw | ConvertFrom-Json
+$deskVersion = [string]$deskManifest.version
+if ($deskVersion -notmatch '^\d+\.\d+\.\d+$') { throw 'The distribution is missing its release version.' }
+foreach ($deskExe in @((Join-Path $deskPackage 'UnityBridge Desk 실행.exe'),(Join-Path $deskApp 'UnityBridgeDesk.exe'),(Join-Path $deskApp 'worker/UnityBridgeDesk.Worker.exe'))) {
+    $deskFileVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($deskExe)
+    if (($deskFileVersion.ProductVersion -split '\+')[0] -ne $deskVersion) { throw "Executable version mismatch: $deskExe" }
+}
 foreach ($deskFile in $deskManifest.files) {
     if ((Get-FileHash -LiteralPath (Join-Path $deskApp $deskFile.path) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $deskFile.sha256) { throw "Payload mismatch: $($deskFile.path)" }
 }
@@ -69,4 +75,4 @@ $deskDeadline = [DateTime]::UtcNow.AddSeconds(5)
 while (!(Test-Path -LiteralPath $deskReport) -and [DateTime]::UtcNow -lt $deskDeadline) { Start-Sleep -Milliseconds 100 }
 $deskLines = (Get-Content -LiteralPath $deskReport -Raw -Encoding unicode) -split "`n"
 if ($deskLines[0] -ne (Join-Path $deskTest '받은 폴더/app').Replace('/','\') -or $deskLines[1] -ne $deskReport -or $deskLines[2] -ne '한글 값' -or $deskLines[3] -ne 'quoted "value"' -or $deskLines[4] -ne '') { throw 'Launcher lost its relative target, working directory, or Unicode/quoted arguments' }
-Write-Output "Verified $($deskManifest.files.Count) payload hashes and $deskFileCount ZIP files. Launcher resolves a moved Unicode folder, sets app working directory, and preserves quoted/empty arguments. No Unity or AI work was started."
+Write-Output "Verified v$deskVersion across launcher, Desktop, Worker and manifest; $($deskManifest.files.Count) payload hashes and $deskFileCount ZIP files. Launcher resolves a moved Unicode folder, sets app working directory, and preserves quoted/empty arguments. No Unity or AI work was started."

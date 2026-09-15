@@ -54,10 +54,7 @@ public sealed partial class OperationPanel
         {
         if(loading||!inputDirty)return true;
         inputDirty=false;
-        var snapshot=new RunnerDraft(fields.ToImmutableDictionary(x=>x.Key,x=>x.Value.Text),
-            [..releases.SelectedItems.Cast<ReleaseRow>().Select(x=>x.Id)],
-            [..experiments.Where(x=>x.Value.IsChecked==true).Select(x=>x.Key)],
-            balanced.IsChecked==true,keepFailed.IsChecked==true,keepSuccess.IsChecked==true);
+        var snapshot=CaptureRunnerDraft();
         var saved=await inputStore.SaveAsync(snapshot);
         bool success=saved.Status==SaveStatus.Saved;
         if(success&&!disposed)await RememberInputPathsAsync();
@@ -67,6 +64,10 @@ public sealed partial class OperationPanel
         }
         finally{inputSaveGate.Release();}
     }
+    private RunnerDraft CaptureRunnerDraft()=>new(fields.ToImmutableDictionary(x=>x.Key,x=>x.Value.Text),
+        [..releases.SelectedItems.Cast<ReleaseRow>().Select(x=>x.Id)],
+        [..experiments.Where(x=>x.Value.IsChecked==true).Select(x=>x.Key)],
+        balanced.IsChecked==true,keepFailed.IsChecked==true,keepSuccess.IsChecked==true);
     private async Task LoadInputDraft()
     {
         var read=await inputStore.LoadAsync();

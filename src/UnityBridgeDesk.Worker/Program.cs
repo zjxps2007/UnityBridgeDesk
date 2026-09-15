@@ -11,6 +11,10 @@ using UnityBridgeDesk.Infrastructure.Ai;
 
 Console.InputEncoding = Encoding.UTF8;
 Console.OutputEncoding = new UTF8Encoding(false);
+if(args is ["--local-trial",var localRequest,var localResult])
+    return await UnityBridgeDesk.Infrastructure.SpeedBench.SpeedGuest.RunLocalFile(localRequest,localResult);
+if(args is ["--vm-trial",var vmRequest,var vmResult])
+    return await UnityBridgeDesk.Infrastructure.SpeedBench.SpeedGuest.RunFile(vmRequest,vmResult);
 if(args is ["--integration",var integration])return await DiagnosticIntegration.RunAsync(integration);
 if(args is ["--recover-history",var historyRoot,var exportRoot])
 {
@@ -68,6 +72,13 @@ if (args is ["--fixture", var behavior, ..])
     if (behavior == "echo") { Console.WriteLine(JsonSerializer.Serialize(args.Skip(2))); return 0; }
     if (behavior == "large") { await Task.WhenAll(Console.Out.WriteAsync(new string('한', 200000)), Console.Error.WriteAsync(new string('E', 200000))); return 0; }
     if (behavior == "hang") { await Task.Delay(Timeout.Infinite); return 0; }
+    if (behavior == "spawn-hang")
+    {
+        var info = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false, CreateNoWindow = true };
+        info.ArgumentList.Add("--fixture"); info.ArgumentList.Add("hang");
+        using var grandchild = Process.Start(info)!;
+        Console.WriteLine(grandchild.Id); await Console.Out.FlushAsync(); await Task.Delay(Timeout.Infinite); return 0;
+    }
     if (behavior == "fail") { Console.Error.WriteLine("fixture failure"); return 7; }
     if (behavior == "broken") { Console.Write("{bad"); return 0; }
     if (behavior == "ansi") { Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);Console.OutputEncoding=Encoding.GetEncoding(949);Console.Write("한글 공백");return 0; }

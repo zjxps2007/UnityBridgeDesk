@@ -49,7 +49,8 @@ public sealed partial class OperationPanel
         var shortcuts=new WrapPanel{Margin=new(0,8,0,10)};
         shortcuts.Children.Add(ActionButton("프로젝트·버전 보관함",()=>CatalogRequested?.Invoke()));
         shortcuts.Children.Add(ActionButton("F01 응답 시험 선택",UseResponsePreset));
-        shortcuts.Children.Add(ActionButton("지난 결과 보기",()=>tabs.SelectedIndex=2));benchmarkForm.Children.Add(shortcuts);
+        shortcuts.Children.Add(ActionButton("지난 결과 보기",()=>tabs.SelectedIndex=2));
+        AddBenchmarkReset(shortcuts);benchmarkForm.Children.Add(shortcuts);benchmarkForm.Children.Add(benchmarkResetNotice);
         Field(benchmarkForm,"editor","1. Unity Editor 실행 파일",true);
         benchmarkForm.Children.Add(Text("2. 비교할 버전 · 클릭해 선택하거나 해제하세요."));
         benchmarkForm.Children.Add(Text("버전 비교에는 두 개 이상을 선택하세요. 하나만 선택하면 해당 버전의 응답을 측정합니다.",11));
@@ -83,7 +84,8 @@ public sealed partial class OperationPanel
         benchmarkForm.Children.Add(new Expander{Header="세부 조건 · 시간 제한 · 복제본 보관",Content=limits,Margin=new(0,8,0,12)});
         var aiForm=new StackPanel();Field(aiForm,"codex","Codex 실행 파일",true);Field(aiForm,"auth","Codex 로그인 정보",folder:true);Field(aiForm,"model","모델 ID");Field(aiForm,"reasoning","추론 수준",value:"medium");Field(aiForm,"calls","AI 도구 호출 한도",value:"100");aiForm.Children.Add(permission);permission.Click+=(_,_)=>Invalidate();
         aiSettings=new Expander{Header="AI 제작 연결 설정",IsExpanded=true,Content=aiForm,Margin=new(0,8,0,12)};benchmarkForm.Children.Add(aiSettings);
-        var memo=new TextBox{Text=session.Drafts.BenchmarkNote,AcceptsReturn=true,TextWrapping=TextWrapping.Wrap,MinHeight=64,MaxLength=32000};
+        var memo=benchmarkMemo=new TextBox{Text=session.Drafts.BenchmarkNote,AcceptsReturn=true,TextWrapping=TextWrapping.Wrap,MinHeight=64,MaxLength=32000};
+        AutomationProperties.SetAutomationId(memo,"BenchmarkMemo");
         memo.TextChanged+=(_,_)=>{session.SetDrafts(session.Drafts with{BenchmarkNote=memo.Text});Invalidate();};
         benchmarkForm.Children.Add(new Expander{Header="실험 메모",Content=memo,Margin=new(0,8,0,12)});
         benchmarkForm.Children.Add(Card(setupSummary,"Mint"));
@@ -105,6 +107,7 @@ public sealed partial class OperationPanel
         runtime.Changed+=BenchmarkNotice;runtime.ProgressChanged+=BenchmarkProgress;catalog.Changed+=SyncBenchmarkCatalog;
         elapsedTimer.Tick+=(_,_)=>UpdateElapsed();
         Loaded+=async(_,_)=>{if(initialized||disposed)return;initialized=true;try{await LoadSettings();await ResolveLocalSetupAsync();await RefreshBenchmarkHistory(requestedHistoryRun);}catch(Exception error)when(error is IOException or JsonException or UnauthorizedAccessException){preview.Text=error.Message;}finally{loading=false;if(inputDirty)QueueInputSave();UpdateBenchmarkSetup();}};
+        benchmarkDefaults=CaptureRunnerDraft();
         UpdateBenchmarkSetup();
     }
     private static ScrollViewer Scroll(UIElement content)=>new(){Content=content,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
@@ -123,7 +126,7 @@ public sealed partial class OperationPanel
     private BenchmarkModes SelectedModes=>(fixedMode.IsChecked==true?BenchmarkModes.FixedCommands:0)|(aiMode.IsChecked==true?BenchmarkModes.AiCreation:0);
     private void UseResponsePreset()
     {
-        if(benchmarkBusy||bridgeSetupBusy)return;
+        if(loading||benchmarkBusy||benchmarkReviewBusy||bridgeSetupBusy||benchmarkResetBusy)return;
         loading=true;fixedMode.IsChecked=true;aiMode.IsChecked=false;foreach(var pair in experiments)pair.Value.IsChecked=pair.Key=="F01";
         fields["repeats"].Text="2";fields["warmups"].Text="1";fields["inner"].Text="3";loading=false;
         BenchmarkModesChanged(this,new RoutedEventArgs());
@@ -158,10 +161,12 @@ public sealed partial class OperationPanel
         SummaryChanged?.Invoke();
         if(aiSettings is null)return;
         benchmarkStop.Visibility=benchmarkBusy?Visibility.Visible:Visibility.Collapsed;benchmarkStop.IsEnabled=!stopRequested;
-        benchmarkForm.IsEnabled=!loading&&!benchmarkBusy&&!benchmarkReviewBusy;
+        benchmarkForm.IsEnabled=!loading&&!benchmarkBusy&&!benchmarkReviewBusy&&!benchmarkResetBusy;
         foreach(UIElement child in benchmarkForm.Children)child.IsEnabled=!bridgeSetupBusy||ReferenceEquals(child,bridgeSetupCard);
         UpdateBridgeSetupControls();
-        benchmarkPrimary.IsEnabled=!loading&&!benchmarkBusy&&!benchmarkReviewBusy&&!bridgeSetupBusy;
+        UpdateBenchmarkResetControls();
+        benchmarkPrimary.IsEnabled=!loading&&!benchmarkBusy&&!benchmarkReviewBusy&&!bridgeSetupBusy&&!benchmarkResetBusy;
+        if(benchmarkResetBusy){benchmarkPrimary.Content="설정 저장 중…";footerHint.Text="벤치마크 설정을 저장하고 있어요.";return;}
         if(bridgeSetupBusy){benchmarkPrimary.Content="환경 준비 중…";footerHint.Text="CLI·Connector를 확인하고 있어요. 위 카드에서 준비를 취소할 수 있습니다.";return;}
         if(benchmarkBusy){benchmarkPrimary.Content=stopRequested?"정리 중…":"진행 중";footerHint.Text="다른 탭을 보아도 작업은 계속됩니다.";return;}
         if(tabs.SelectedIndex==2){benchmarkPrimary.Content="새 벤치 준비";footerHint.Text="성공 여부 → 조건별 시간 → 표본 수 순서로 확인하세요.";return;}
@@ -171,7 +176,7 @@ public sealed partial class OperationPanel
     }
     private async void BenchmarkPrimaryClick(object sender,RoutedEventArgs e)
     {
-        if(benchmarkBusy||benchmarkReviewBusy||bridgeSetupBusy||loading)return;
+        if(benchmarkBusy||benchmarkReviewBusy||bridgeSetupBusy||benchmarkResetBusy||loading)return;
         if(tabs.SelectedIndex!=0){tabs.SelectedIndex=0;return;}
         if(frozen is null||options is null)
         {

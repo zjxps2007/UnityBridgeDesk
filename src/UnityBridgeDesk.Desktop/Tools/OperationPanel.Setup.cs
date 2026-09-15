@@ -68,7 +68,7 @@ public sealed partial class OperationPanel
     }
     private void UpdateBridgeSetupControls()
     {
-        bridgeSetupStart.IsEnabled = !loading && !bridgeSetupBusy && !benchmarkBusy && !benchmarkReviewBusy && !resolvingPaths;
+        bridgeSetupStart.IsEnabled = !loading && !bridgeSetupBusy && !benchmarkBusy && !benchmarkReviewBusy && !benchmarkResetBusy && !resolvingPaths;
         bridgeSetupCancel.Visibility = bridgeSetupBusy ? Visibility.Visible : Visibility.Collapsed;
         bridgeSetupOptions.IsEnabled = !bridgeSetupBusy;
     }
@@ -83,7 +83,7 @@ public sealed partial class OperationPanel
     }
     private async Task PrepareBridgeEnvironmentAsync()
     {
-        if (loading || disposed || bridgeSetupBusy || benchmarkBusy || benchmarkReviewBusy || resolvingPaths) return;
+        if (loading || disposed || bridgeSetupBusy || benchmarkBusy || benchmarkReviewBusy || benchmarkResetBusy || resolvingPaths) return;
         if (!catalog.CanWrite) { bridgeSetupStatus.Text = catalog.Notice; return; }
         if (runtime.IsRunning) { bridgeSetupStatus.Text = "진행 중인 작업을 마친 뒤 환경을 준비해 주세요."; return; }
         bridgeSetupBusy = true; bridgeSetupCancel.IsEnabled = true;

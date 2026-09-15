@@ -1,13 +1,10 @@
 using System.Windows;
-using UnityBridgeDesk.Desktop.Shell;
-using UnityBridgeDesk.Infrastructure.Catalog;
-using UnityBridgeDesk.Infrastructure.Execution;
 
 namespace UnityBridgeDesk.Desktop;
 
 public partial class App : Application
 {
-    protected override async void OnStartup(StartupEventArgs e)
+    protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         try
@@ -19,14 +16,7 @@ public partial class App : Application
                     throw new ArgumentException("Use --data-dir with an absolute directory.");
                 dataRoot = Path.GetFullPath(e.Args[1]);
             }
-            var persistence = new ShellPersistence(dataRoot);
-            var loaded = await persistence.LoadAsync();
-            var catalog = new CatalogService(dataRoot);
-            await catalog.LoadAsync();
-            string worker=Path.Combine(AppContext.BaseDirectory,"worker","UnityBridgeDesk.Worker.exe");
-            if(!File.Exists(worker))worker=Path.Combine(AppContext.BaseDirectory,"UnityBridgeDesk.Worker.exe");
-            var runtime=new DeskRuntime(dataRoot,new WorkerRunner(worker));
-            MainWindow = new MainWindow(loaded.CreateSession(), persistence, loaded, catalog,runtime);
+            MainWindow = new SpeedBenchWindow(dataRoot);
             MainWindow.Show();
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)

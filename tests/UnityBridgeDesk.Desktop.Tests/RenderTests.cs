@@ -43,6 +43,7 @@ public sealed class RenderTests
                 // Only load the visual resources. Never run App.OnStartup against the user's data.
                 app = new Application { ShutdownMode=ShutdownMode.OnExplicitShutdown };
                 app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source=new Uri("/UnityBridgeDesk;component/Themes/Controls.xaml",UriKind.Relative) });
+                VerifySpeedBenchShell(directory);
                 var session = new ShellSession();
                 foreach (var palette in Enum.GetValues<DeskPalette>())
                 {
@@ -121,6 +122,7 @@ public sealed class RenderTests
                 VerifyAmbiguousPaths(directory);
                 VerifyReleaseSelectionRestoration(directory);
                 VerifyAutomaticBridgeSetup(directory);
+                VerifyBenchmarkReset(directory);
                 // Exercise the real shell with legacy floating layouts and a cached execution view.
                 string tabRoot = Path.Combine(directory, "tab-shell");
                 var delayedFiles = new DeferredWrites();
@@ -567,6 +569,113 @@ public sealed class RenderTests
     private sealed class NoSetupNetwork : System.Net.Http.HttpMessageHandler
     {
         protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request,CancellationToken ct)=>throw new InvalidOperationException("Synthetic UI setup must use local fixtures.");
+    }
+    private static void VerifySpeedBenchShell(string directory)
+    {
+        string root=Path.Combine(directory,"speed-window");
+        Complete(UnityBridgeDesk.Infrastructure.SpeedBench.SpeedFiles.Write(Path.Combine(root,"speed","releases","release-list.json"),new[] {
+            new UnityBridgeDesk.Infrastructure.SpeedBench.ReleaseChoice(1,"v0.2.1","0.2.1","Stable",false,"https://github.com/zjxps2007/UnityBridge/releases/download/v0.2.1/unity-bridge-windows-amd64.exe",null,"fixture"),
+            new UnityBridgeDesk.Infrastructure.SpeedBench.ReleaseChoice(2,"v0.2.2-rc.2","0.2.2-rc.2","RC2",true,"https://github.com/zjxps2007/UnityBridge/releases/download/v0.2.2-rc.2/unity-bridge-windows-amd64.zip",null,"fixture") }));
+        var window=new SpeedBenchWindow(root,new LocalDiscovery(new(root,root,root,root,root,"")));
+        window.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent));
+        var form=(StackPanel)window.FindName("PreparationForm");PumpUntil(()=>form.IsEnabled);
+        var tabs=(TabControl)window.FindName("Tabs");Assert.AreEqual(3,tabs.Items.Count);
+        var rc=((StackPanel)window.FindName("ReleaseList")).Children.OfType<CheckBox>().Single(c=>c.Content.ToString()!.Contains("rc.2"));
+        Assert.IsTrue(rc.IsEnabled);Assert.IsFalse(rc.IsChecked);Assert.Contains("런타임",rc.Content.ToString()!);rc.IsChecked=true;
+        Assert.IsTrue(((TextBlock)window.FindName("EditorStatus")).Text.Contains("찾지 못했습니다"));
+        Assert.AreEqual(48.0,((TextBlock)window.FindName("Clock")).FontSize);
+        Assert.IsNull(window.FindName("GuestPassword")); Assert.IsNull(window.FindName("VmList"));
+        var repeats=(TextBox)window.FindName("Repeats");repeats.Text="invalid";
+        var reset=(Button)window.FindName("ResetButton");reset.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));PumpUntil(()=>form.IsEnabled);
+        Assert.AreEqual("2",repeats.Text);reset.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));PumpUntil(()=>form.IsEnabled);
+        Assert.AreEqual("invalid",repeats.Text);
+        var start=Descendants((DependencyObject)window.Content).OfType<Button>().Single(x=>AutomationProperties.GetAutomationId(x)=="LocalBenchmarkStart");
+        start.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));PumpUntil(()=>form.IsEnabled);
+        Assert.IsTrue(((TextBlock)window.FindName("State")).Text.Contains("Unity"));
+        Assert.IsFalse(Directory.Exists(Path.Combine(root,"speed","runs")));
+        var content=(FrameworkElement)window.Content;
+        foreach(int index in new[]{0,1,2})
+        {
+            tabs.SelectedIndex=index;content.Measure(new Size(1230,800));content.Arrange(new Rect(0,0,1230,800));content.UpdateLayout();
+            if(index==0)
+            {
+                Assert.IsGreaterThanOrEqualTo(36d,start.ActualHeight);
+                Assert.IsTrue(start.TranslatePoint(new Point(),content).Y>=0);
+                Assert.IsTrue(start.TranslatePoint(new Point(),content).Y+start.ActualHeight<=content.ActualHeight-38);
+            }
+            var image=new RenderTargetBitmap(1845,1200,144,144,PixelFormats.Pbgra32);image.Render(content);
+            var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(image));
+            using var file=File.Create(Path.Combine(directory,$"speed-local-{index}-150.png"));encoder.Save(file);
+        }
+
+
+        bool closed=false;window.Closed+=(_,_)=>closed=true;window.Close();PumpUntil(()=>closed);
+        string saved=File.ReadAllText(Path.Combine(root,"speed","local-settings.json"));
+        Assert.Contains("EditorPath",saved);Assert.DoesNotContain("GuestUser",saved);
+    }
+
+    private static void VerifyBenchmarkReset(string directory)
+    {
+        string root=Path.Combine(directory,"benchmark-reset"),project=Path.Combine(root,"project");
+        foreach(string part in new[]{"Assets","Packages","ProjectSettings"})Directory.CreateDirectory(Path.Combine(project,part));
+        File.WriteAllText(Path.Combine(project,"ProjectSettings","ProjectVersion.txt"),"m_EditorVersion: 6000.3.23f1");
+        string cli=Path.Combine(root,"unity-bridge.exe");File.Copy(Environment.ProcessPath!,cli);
+        using var catalog=new CatalogService(root);Complete(catalog.LoadAsync());
+        Assert.IsTrue(Complete(catalog.UseDiscoveredProjectAsync(project)).Success);
+        Assert.IsTrue(Complete(catalog.UseDiscoveredReleaseAsync(cli,null,"retained version")).Success);
+        var originalCatalog=catalog.Document;
+        var runtime=new DeskRuntime(root,new WorkerRunner(Path.Combine(root,"never-executed.exe")));
+        var scanner=new LocalDiscovery(new(Path.Combine(root,"home"),Path.Combine(root,"roaming"),Path.Combine(root,"local"),Path.Combine(root,"programs"),Path.Combine(root,"app"),""));
+        var session=new ShellSession(drafts:DeskDrafts.Empty with{AiPrompt="other AI instruction",InstallationNote="other installation note"});
+        var storage=new ShellPersistence(root);Complete(storage.LoadAsync());
+        string priorResult=Path.Combine(root,"runs","keep-result.txt"),otherSettings=Path.Combine(root,"settings","runner-AiWork.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(priorResult)!);Directory.CreateDirectory(Path.GetDirectoryName(otherSettings)!);
+        File.WriteAllText(priorResult,"original result");File.WriteAllText(otherSettings,"original AI preferences");
+        Button FindAction(OperationPanel panel,string id)=>Descendants(panel).OfType<Button>().Single(x=>AutomationProperties.GetAutomationId(x)==id);
+        TextBox Field(OperationPanel panel,string key)=>Descendants(panel).OfType<TextBox>().Single(x=>AutomationProperties.GetAutomationId(x)=="Runner-"+key);
+        CheckBox Mode(OperationPanel panel,string name)=>Descendants(panel).OfType<CheckBox>().Single(x=>x.Content?.ToString()==name);
+        void Load(OperationPanel panel){panel.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent));PumpUntil(()=>FindAction(panel,"BenchmarkReset").IsEnabled);}
+        using(var panel=new OperationPanel(runtime,catalog,ToolKind.Benchmark,session,scanner))
+        {
+            Load(panel);
+            foreach(string key in new[]{"editor","codex"})Field(panel,key).Text=cli;
+            Field(panel,"auth").Text=root;
+            Field(panel,"repeats").Text="1."; // A reset must work even when the current form cannot be parsed.
+            Field(panel,"timeout").Text="999";Field(panel,"prepare").Text="321";Field(panel,"model").Text="chosen-model";
+            Field(panel,"reasoning").Text="high";Field(panel,"calls").Text="77";
+            var ai=Mode(panel,"AI 제작");ai.IsChecked=true;ai.RaiseEvent(new RoutedEventArgs(CheckBox.ClickEvent));
+            var fixedMode=Mode(panel,"고정 명령");fixedMode.IsChecked=false;fixedMode.RaiseEvent(new RoutedEventArgs(CheckBox.ClickEvent));
+            Mode(panel,"실패한 복제본 보관").IsChecked=false;Mode(panel,"성공한 복제본도 보관").IsChecked=true;
+            var memo=Descendants(panel).OfType<TextBox>().Single(x=>AutomationProperties.GetAutomationId(x)=="BenchmarkMemo");memo.Text="keep my experiment note";
+            var reset=FindAction(panel,"BenchmarkReset");reset.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));PumpUntil(()=>reset.IsEnabled);
+            Assert.AreEqual("2",Field(panel,"repeats").Text);Assert.AreEqual("180",Field(panel,"timeout").Text);Assert.AreEqual("600",Field(panel,"prepare").Text);
+            Assert.AreEqual("",Field(panel,"model").Text);Assert.AreEqual("medium",Field(panel,"reasoning").Text);Assert.AreEqual("100",Field(panel,"calls").Text);
+            Assert.IsTrue(fixedMode.IsChecked);Assert.IsFalse(ai.IsChecked);Assert.AreEqual("",memo.Text);
+            Assert.IsTrue(Mode(panel,"실패한 복제본 보관").IsChecked);Assert.IsFalse(Mode(panel,"성공한 복제본도 보관").IsChecked);
+            Assert.AreEqual(cli,Field(panel,"editor").Text);Assert.AreEqual(cli,Field(panel,"codex").Text);Assert.AreEqual(root,Field(panel,"auth").Text);
+            Assert.AreEqual(originalCatalog,catalog.Document);Assert.AreEqual("구성 확인",FindAction(panel,"BenchmarkPrimary").Content);
+            FindAction(panel,"BenchmarkResetUndo").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));PumpUntil(()=>reset.IsEnabled);
+            Assert.AreEqual("1.",Field(panel,"repeats").Text);Assert.AreEqual("999",Field(panel,"timeout").Text);Assert.AreEqual("chosen-model",Field(panel,"model").Text);
+            Assert.AreEqual("keep my experiment note",memo.Text);Assert.IsTrue(ai.IsChecked);Assert.IsFalse(fixedMode.IsChecked);
+            reset.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));PumpUntil(()=>reset.IsEnabled);
+            Complete(panel.FlushInputAsync());Complete(storage.SaveAsync(session));
+            panel.Width=680;panel.Height=720;panel.Measure(new Size(680,720));panel.Arrange(new Rect(0,0,680,720));panel.UpdateLayout();
+            var bitmap=new RenderTargetBitmap(1020,1080,144,144,PixelFormats.Pbgra32);bitmap.Render(panel);
+            var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            using var output=File.Create(Path.Combine(directory,"benchmark-reset-150.png"));encoder.Save(output);
+        }
+        var restoredSession=Complete(storage.LoadAsync()).CreateSession();
+        using(var reopened=new OperationPanel(runtime,catalog,ToolKind.Benchmark,restoredSession,scanner))
+        {
+            Load(reopened);
+            Assert.AreEqual("2",Field(reopened,"repeats").Text);Assert.AreEqual("180",Field(reopened,"timeout").Text);
+            Assert.AreEqual("",Field(reopened,"model").Text);Assert.AreEqual(cli,Field(reopened,"editor").Text);
+            Assert.IsTrue(Mode(reopened,"고정 명령").IsChecked);Assert.IsFalse(Mode(reopened,"AI 제작").IsChecked);
+            Assert.AreEqual("",restoredSession.Drafts.BenchmarkNote);Assert.AreEqual("other AI instruction",restoredSession.Drafts.AiPrompt);Assert.AreEqual("other installation note",restoredSession.Drafts.InstallationNote);
+            Assert.AreEqual("retained version",Descendants(reopened).OfType<ListBox>().Single(x=>x.Items.Count==1&&x.Items[0].ToString()=="retained version").SelectedItem?.ToString());
+            Assert.AreEqual(Visibility.Collapsed,FindAction(reopened,"BenchmarkResetUndo").Visibility);
+        }
+        Assert.AreEqual("original result",File.ReadAllText(priorResult));Assert.AreEqual("original AI preferences",File.ReadAllText(otherSettings));Assert.IsFalse(runtime.IsRunning);
     }
     private static IEnumerable<string> Labels(DependencyObject parent)
     {

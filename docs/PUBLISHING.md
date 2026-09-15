@@ -1,76 +1,65 @@
-# GitHub에 올리기
+# GitHub 업로드 · v0.3.0
 
-## 소스와 실행 파일
+현재 앱 버전은 **v0.3.0 정식**입니다. 비교 대상 UnityBridge의 버전과 구분합니다.
 
-- **저장소 Code**에는 `README.md`, `src/`, `tests/`, `docs/`, `build/`, 아이콘 원본과 프로젝트 설정을 올립니다.
-- **Releases의 첨부 파일**에는 검사한 실행용 `UnityBridgeDesk-전달용-날짜시간.zip`을 올립니다.
+## 어디에 어떤 파일을 올리나요?
 
-실행용 ZIP과 소스 ZIP은 다릅니다. GitHub의 자동 Source code ZIP은 빌드 전 소스이며 실행 파일을 포함하지 않습니다. 사용자에게 실행용 첨부 파일을 안내하세요.
+| 대상 | 파일 / 내용 |
+|---|---|
+| 저장소 Code | 소스 ZIP을 풀었을 때 나오는 폴더의 **내용물**. README.md, CHANGELOG.md, src, tests, docs, build, .gitignore, .github 등이 저장소 루트에 오도록 반영 |
+| Releases → Assets | `UnityBridgeDesk-v0.3.0-win-x64.zip`, `SHA256SUMS.txt` |
+| 릴리스 태그 | `v0.3.0` |
+| 릴리스 제목 | `UnityBridge Desk v0.3.0 · 속도 벤치 전용` |
+| 릴리스 본문 | [v0.3.0 본문](releases/v0.3.0.md)의 첫 제목 아래 내용 |
+| GitHub Desktop Summary / Description | [커밋 문구](releases/v0.3.0-commit.md) |
 
-## 업로드할 소스 만들기
+**실행용 ZIP은 Releases에 첨부**합니다. 소스 ZIP 자체나 실행용 ZIP을 Code에 넣지 마세요. GitHub가 자동 생성하는 Source code ZIP에는 실행 파일이 없습니다. EXE 하나만 전달하면 실행에 필요한 app 폴더가 빠집니다.
+
+## 소스 반영
+
+1. 기존 저장소가 있으면 현재 수정 내용을 확인하고, 준비한 소스 폴더의 변경 사항을 반영합니다. 저장소의 `.git` 폴더를 덮어쓰거나 삭제하지 않습니다.
+2. GitHub Desktop에서 README·소스·문서·버전 변경을 확인합니다. 개인 설정·캐시·결과 파일이 없는지 확인합니다.
+3. 제공한 Summary·Description으로 커밋하고 push합니다. 저장소가 아직 없다면 먼저 빈 저장소를 만들고 이 소스 폴더를 연결합니다.
+4. 업로드 후 Actions의 Windows build and tests 결과를 확인합니다. 로컬 검사 통과와 실제 GitHub Actions 실행은 별개입니다.
+
+정리한 소스 ZIP에는 `.gitignore`·`.gitattributes`·`.github/`와 MIT 라이선스가 포함됩니다. 숨김 파일을 빼고 복사하지 않도록 주의하세요.
+
+## 릴리스 작성
+
+1. 소스가 올라간 커밋을 대상으로 **새 릴리스**를 작성합니다.
+2. 태그 `v0.3.0`, 제목 `UnityBridge Desk v0.3.0 · 속도 벤치 전용`을 입력합니다.
+3. [릴리스 본문](releases/v0.3.0.md)을 붙여넣습니다.
+4. 실행용 ZIP과 `SHA256SUMS.txt`를 첨부합니다.
+5. **Pre-release는 선택하지 않습니다.** 정식 v0.3.0으로 게시합니다.
+
+앱은 정식 배포이며 기본 측정 설정과 분석은 예비 기술 통계입니다. README·릴리스 본문에 확인한 범위와 한계를 유지하세요. 공개 서명·설치 프로그램·자동 업데이트는 현재 제공하지 않습니다.
+
+이 안내와 파일 준비는 GitHub 저장소 생성·push·릴리스 게시를 자동으로 수행하지 않습니다.
+
+## 다시 빌드하기
+
+버전 기준은 `Directory.Build.props`입니다. 앱·Worker·배포 명세와 실행기 버전을 여기에 맞춥니다.
 
 ```powershell
+pwsh -File ./build/Verify.ps1 -Restore
+pwsh -File ./build/Publish-Desk.ps1
+# Publish가 출력한 실제 폴더 경로를 아래에 사용합니다.
+pwsh -File ./build/Package-Desk.ps1 -BundlePath 'C:/.../UnityBridgeDesk-win-x64-날짜시간'
+pwsh -File ./build/Verify-Package.ps1 -PackagePath './dist/UnityBridgeDesk-v0.3.0-win-x64'
 pwsh -File ./build/Export-Source.ps1
 ```
 
-명령은 `dist/` 아래 새 폴더와 ZIP을 만들고 경로를 출력합니다. 공개용 파일 목록만 복사하므로 개발 폴더의 캐시·실행 기록·과거 시안·배포 ZIP이 섞이지 않습니다. ZIP에는 `.gitignore`·`.gitattributes`·`.github/`도 포함합니다. 기존 파일과 폴더를 삭제하지 않습니다.
+같은 버전의 패키지 폴더나 ZIP이 이미 있으면 덮어쓰지 않습니다. 기존 배포본을 별도로 보관하고 다음 버전을 지정하세요. 소스 내보내기는 새 폴더만 만들며 기존 저장소를 삭제하지 않습니다. 자세한 빌드 환경은 [개발 가이드](DEVELOPMENT.md)에 있습니다.
 
-원하는 빈 위치를 지정할 수도 있습니다.
-
-```powershell
-pwsh -File ./build/Export-Source.ps1 -OutputDirectory 'C:/Repositories/UnityBridgeDesk-GitHub'
-```
-
-**출력 폴더 자체가 저장소 루트**입니다. 그 안의 `README.md`와 `src/`가 GitHub 첫 화면에 오도록 올립니다. 소스 ZIP 파일 자체만 Code에 올리거나, 작업 폴더 전체를 올리지 마세요.
-
-## 첫 커밋 예시
-
-아직 업로드하지 않은 첫 공개라면 GitHub Desktop의 Summary와 Description에 다음 내용을 사용할 수 있습니다. 기존 버전의 수정 이력이 아닌 현재 포함된 기능을 설명합니다.
-
-**Summary**
-
-```text
-feat: UnityBridge Desk 최초 공개
-```
-
-**Description**
-
-```text
-UnityBridge 설치·관리, AI 작업, 버전별 벤치마크를 통합한 Windows 데스크톱 앱입니다.
-
-- 파스텔 테마와 탭 기반 작업 화면 제공
-- UnityBridge 0.2.0·0.2.1 CLI·Connector 자동 검색·다운로드·검증·등록
-- 버전별 파일 보관과 Unity Editor 자동 연결
-- 고정 명령·AI 제작 벤치 선택 및 독립 복제 환경에서 비교
-- 진행 상태·결과 확인과 JSON·CSV 내보내기
-- 사용·개발 문서, MIT 라이선스와 GitHub Actions 검사 구성 포함
-
-검증: 로컬 자동 검사 149개 통과. 공식 파일 다운로드, 오프라인 재사용과 준비 완료 화면 확인.
-```
-
-GitHub에서 빈 저장소를 만든 뒤 정리한 소스 폴더 안에서 실행합니다. 마지막 두 줄의 URL은 본인 저장소 주소로 바꾸세요.
+실행용 ZIP의 SHA-256은 다음처럼 확인할 수 있습니다. 받은 `SHA256SUMS.txt`의 같은 파일 이름과 대조하세요.
 
 ```powershell
-git init -b main
-git add .
-git status --short
-git commit -m "Prepare UnityBridge Desk source"
-git remote add origin https://github.com/OWNER/REPOSITORY.git
-git push -u origin main
+Get-FileHash -LiteralPath './UnityBridgeDesk-v0.3.0-win-x64.zip' -Algorithm SHA256
 ```
 
-현재 정리 작업은 원격 저장소 생성·push를 수행하지 않습니다. 라이선스는 루트의 MIT `LICENSE`를 사용합니다.
+## 공개 소스에서 제외하는 자료
 
-## .gitignore에 포함한 제외 항목
+빌드 결과·배포 ZIP·.cache·TestResults, 개인 설정·인증 파일, 실제 결과와 로그·dump, 내려받은 외부 릴리스, VM 이미지·ISO를 제외합니다. `.gitignore`와 `build/Export-Source.ps1`의 공개 파일 목록을 함께 사용합니다.
 
-빌드 폴더(`bin`, `obj`), `.cache`, `dist`, 테스트 산출물, 실행 기록과 복제본, 개인 설정·인증 파일, 자동으로 받은 버전 보관 폴더(`releases`), 로컬 설계 이력과 진단 기록을 제외합니다. `packages.lock.json`, `.csproj`, `.xaml`, 아이콘·배경 자산과 빌드 스크립트는 포함합니다.
+`.gitignore`는 이미 추적한 파일이나 웹에서 직접 선택한 파일을 지워 주지 않습니다. 준비한 소스 폴더를 기준으로 변경 목록을 확인하세요.
 
-`.gitignore`는 Git이 아직 추적하지 않는 파일에 적용됩니다. 이미 커밋된 개인 파일이나 웹에서 직접 선택한 업로드 파일을 정리해 주는 기능은 아닙니다. 처음에는 위 명령으로 만든 깨끗한 소스 폴더를 사용하는 편이 명확합니다.
-
-## 실행본 공개
-
-1. [개발 가이드](DEVELOPMENT.md)의 빌드·패키징·배포 검사를 수행합니다.
-2. GitHub에서 릴리스를 작성하고 버전·변경 사항·시험 배포 범위를 적습니다.
-3. 실행용 ZIP을 첨부하고 게시합니다. 개인 데이터 폴더는 첨부하지 않습니다.
-
-Desk 앱의 버전과 비교 대상인 UnityBridge `0.2.0`·`0.2.1` 버전은 별개입니다. 앱 버전은 별도로 정하세요. 공개 서명·설치 프로그램·자동 업데이트는 현재 제공하지 않습니다.
