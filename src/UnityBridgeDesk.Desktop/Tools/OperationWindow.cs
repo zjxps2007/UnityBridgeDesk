@@ -155,7 +155,7 @@ public sealed partial class OperationPanel : UserControl,IDisposable
         }
         if(connection)AddPathDiscovery(parent,key,grid);else parent.Children.Add(grid);
     }
-    private void Invalidate(){if(loading||disposed)return;InvalidateBridgeReadiness();formRevision++;frozen=null;options=null;preview.Clear();QueueInputSave();if(tool==ToolKind.Benchmark)UpdateBenchmarkSetup();else UpdateOperationControls();}
+    private void Invalidate(){if(loading||disposed)return;InvalidateBenchmarkResetUndo();InvalidateBridgeReadiness();formRevision++;frozen=null;options=null;preview.Clear();QueueInputSave();if(tool==ToolKind.Benchmark)UpdateBenchmarkSetup();else UpdateOperationControls();}
     private int formRevision;
     private int Number(string key)=>RunnerInput.Integer(key,fields[key].Text);
     private string Value(string key)=>fields[key].Text.Trim().Trim('"');

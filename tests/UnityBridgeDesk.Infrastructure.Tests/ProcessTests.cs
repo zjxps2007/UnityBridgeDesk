@@ -40,6 +40,16 @@ public sealed class ProcessTests
         var next = await runner.RunAsync(Command(root, "echo", "next"), TimeSpan.FromSeconds(10));
         Assert.AreEqual("next", JsonSerializer.Deserialize<string[]>(next.Output)!.Single());
     }
+    [TestMethod] public async Task CancelWaitsForGrandchildExitBeforeReturning()
+    {
+        using var cancel = new CancellationTokenSource(); int grandchild = 0;
+        var result = await new WorkerRunner(Worker).RunAsync(Command(SampleData.TestDirectory(), "spawn-hang"), TimeSpan.FromSeconds(20), frame =>
+        {
+            if (frame.Kind == "stdout" && int.TryParse(frame.Text.Trim(), out int pid)) { grandchild = pid; cancel.Cancel(); }
+        }, cancel.Token);
+        Assert.AreEqual(ProcessOutcome.Cancelled, result.Outcome); Assert.IsTrue(grandchild > 0);
+        Assert.IsFalse(Alive(grandchild)); Assert.IsTrue(Alive(Environment.ProcessId));
+    }
     [TestMethod] public async Task TimeoutAndOutputLimitDoNotBecomeSuccessfulExits()
     {
         var runner = new WorkerRunner(Worker); var root = SampleData.TestDirectory();

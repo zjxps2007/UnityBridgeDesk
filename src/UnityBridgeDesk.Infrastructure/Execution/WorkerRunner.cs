@@ -78,7 +78,8 @@ public sealed class WorkerRunner(string workerPath) : IProcessRunner
         { outcome = pid is null ? ProcessOutcome.StartFailed : ProcessOutcome.ProtocolError; error.Append(e.Message); }
         finally
         {
-            job.Dispose(); // Kills only processes assigned by this invocation, including descendants.
+            try { await job.StopAndWaitAsync(); } // Verify descendants have stopped before the caller removes their files.
+            finally { job.Dispose(); }
             try { if (worker.Id != 0) await worker.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10)); }
             catch (InvalidOperationException) { }
             if (diagnostic is not null) { try { await diagnostic; } catch (OperationCanceledException) { } }

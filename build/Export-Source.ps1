@@ -14,7 +14,7 @@ $deskArchive = $deskOutput + '.zip'
 if (Test-Path -LiteralPath $deskArchive) { throw 'An archive already exists at the destination.' }
 
 # Explicit roots prevent local run data or design history from becoming public by accident.
-$deskRootFiles = @('.gitignore','.gitattributes','.editorconfig','README.md','LICENSE','CONTRIBUTING.md',
+$deskRootFiles = @('.gitignore','.gitattributes','.editorconfig','README.md','CHANGELOG.md','LICENSE','CONTRIBUTING.md',
     'THIRD_PARTY_NOTICES.md','Directory.Build.props','global.json','NuGet.Config','UnityBridgeDesk.slnx')
 $deskBuildFiles = @('Verify.ps1','StartDesk.ps1','Publish-Desk.ps1','Package-Desk.ps1','Verify-Package.ps1',
     'Export-Source.ps1','Build-Icon.ps1','DeskLauncher.c','DeskLauncher.rc','DISTRIBUTION_README.md')
