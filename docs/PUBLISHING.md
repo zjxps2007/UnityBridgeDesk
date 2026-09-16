@@ -1,17 +1,17 @@
-# GitHub 업로드 · v0.3.0
+# GitHub 업로드 · v0.4.0
 
-현재 앱 버전은 **v0.3.0 정식**입니다. 비교 대상 UnityBridge의 버전과 구분합니다.
+현재 앱 버전은 **v0.4.0 정식**입니다. 비교 대상 UnityBridge의 버전과 구분합니다.
 
 ## 어디에 어떤 파일을 올리나요?
 
 | 대상 | 파일 / 내용 |
 |---|---|
 | 저장소 Code | 소스 ZIP을 풀었을 때 나오는 폴더의 **내용물**. README.md, CHANGELOG.md, src, tests, docs, build, .gitignore, .github 등이 저장소 루트에 오도록 반영 |
-| Releases → Assets | `UnityBridgeDesk-v0.3.0-win-x64.zip`, `SHA256SUMS.txt` |
-| 릴리스 태그 | `v0.3.0` |
-| 릴리스 제목 | `UnityBridge Desk v0.3.0 · 속도 벤치 전용` |
-| 릴리스 본문 | [v0.3.0 본문](releases/v0.3.0.md)의 첫 제목 아래 내용 |
-| GitHub Desktop Summary / Description | [커밋 문구](releases/v0.3.0-commit.md) |
+| Releases → Assets | `UnityBridgeDesk-v0.4.0-win-x64.zip`, `SHA256SUMS.txt` |
+| 릴리스 태그 | `v0.4.0` |
+| 릴리스 제목 | `UnityBridge Desk v0.4.0 · exec·부하 안정성·그래프` |
+| 릴리스 본문 | [v0.4.0 본문](releases/v0.4.0.md)의 첫 제목 아래 내용 |
+| GitHub Desktop Summary / Description | [커밋 문구](releases/v0.4.0-commit.md) |
 
 **실행용 ZIP은 Releases에 첨부**합니다. 소스 ZIP 자체나 실행용 ZIP을 Code에 넣지 마세요. GitHub가 자동 생성하는 Source code ZIP에는 실행 파일이 없습니다. EXE 하나만 전달하면 실행에 필요한 app 폴더가 빠집니다.
 
@@ -27,10 +27,10 @@
 ## 릴리스 작성
 
 1. 소스가 올라간 커밋을 대상으로 **새 릴리스**를 작성합니다.
-2. 태그 `v0.3.0`, 제목 `UnityBridge Desk v0.3.0 · 속도 벤치 전용`을 입력합니다.
-3. [릴리스 본문](releases/v0.3.0.md)을 붙여넣습니다.
+2. 태그 `v0.4.0`, 제목 `UnityBridge Desk v0.4.0 · exec·부하 안정성·그래프`을 입력합니다.
+3. [릴리스 본문](releases/v0.4.0.md)을 붙여넣습니다.
 4. 실행용 ZIP과 `SHA256SUMS.txt`를 첨부합니다.
-5. **Pre-release는 선택하지 않습니다.** 정식 v0.3.0으로 게시합니다.
+5. **Pre-release는 선택하지 않습니다.** 정식 v0.4.0으로 게시합니다.
 
 앱은 정식 배포이며 기본 측정 설정과 분석은 예비 기술 통계입니다. README·릴리스 본문에 확인한 범위와 한계를 유지하세요. 공개 서명·설치 프로그램·자동 업데이트는 현재 제공하지 않습니다.
 
@@ -45,7 +45,7 @@ pwsh -File ./build/Verify.ps1 -Restore
 pwsh -File ./build/Publish-Desk.ps1
 # Publish가 출력한 실제 폴더 경로를 아래에 사용합니다.
 pwsh -File ./build/Package-Desk.ps1 -BundlePath 'C:/.../UnityBridgeDesk-win-x64-날짜시간'
-pwsh -File ./build/Verify-Package.ps1 -PackagePath './dist/UnityBridgeDesk-v0.3.0-win-x64'
+pwsh -File ./build/Verify-Package.ps1 -PackagePath './dist/UnityBridgeDesk-v0.4.0-win-x64'
 pwsh -File ./build/Export-Source.ps1
 ```
 
@@ -54,7 +54,7 @@ pwsh -File ./build/Export-Source.ps1
 실행용 ZIP의 SHA-256은 다음처럼 확인할 수 있습니다. 받은 `SHA256SUMS.txt`의 같은 파일 이름과 대조하세요.
 
 ```powershell
-Get-FileHash -LiteralPath './UnityBridgeDesk-v0.3.0-win-x64.zip' -Algorithm SHA256
+Get-FileHash -LiteralPath './UnityBridgeDesk-v0.4.0-win-x64.zip' -Algorithm SHA256
 ```
 
 ## 공개 소스에서 제외하는 자료

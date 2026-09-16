@@ -7,7 +7,9 @@ namespace UnityBridgeDesk.Infrastructure.SpeedBench;
 public static class SpeedReportFiles
 {
     public const string SummaryName = "00_결과요약.txt", WorkbookName = "01_결과분석.xlsx", IssuesName = "02_실패내역.txt";
-    private const int FormatVersion = 1;
+    public const string ChartName = "03_결과그래프.svg";
+    private static readonly string[] ReportNames = [SummaryName, WorkbookName, IssuesName, ChartName];
+    private const int FormatVersion = 4;
     private static readonly SemaphoreSlim Gate = new(1);
     private sealed record Manifest(int FormatVersion, Guid RunId, string SnapshotSha256, DateTimeOffset GeneratedAt, Dictionary<string, string> Files);
 
@@ -31,7 +33,7 @@ public static class SpeedReportFiles
                     var manifest = await SpeedFiles.Read<Manifest>(manifestPath, ct);
                     if (manifest.FormatVersion != FormatVersion || manifest.RunId != report.Run.Id || manifest.SnapshotSha256 != hash || manifest.Files is null) continue;
                     bool same = true;
-                    foreach (string name in new[] { SummaryName, WorkbookName, IssuesName })
+                    foreach (string name in ReportNames)
                         if (!manifest.Files.TryGetValue(name, out var expected) || !File.Exists(Path.Combine(destination, name)) ||
                             await SpeedFiles.Hash(Path.Combine(destination, name), ct) != expected) { same = false; break; }
                     if (same) return destination;
@@ -45,8 +47,9 @@ public static class SpeedReportFiles
                 await File.WriteAllTextAsync(Path.Combine(temporary, SummaryName), report.Text(), new UTF8Encoding(true), ct);
                 await File.WriteAllTextAsync(Path.Combine(temporary, IssuesName), report.Issues(), new UTF8Encoding(true), ct);
                 SpeedWorkbook.Write(Path.Combine(temporary, WorkbookName), report, ct);
+                SpeedCharts.WriteSvg(Path.Combine(temporary, ChartName), report);
                 var hashes = new Dictionary<string, string>();
-                foreach (string name in new[] { SummaryName, WorkbookName, IssuesName }) hashes[name] = await SpeedFiles.Hash(Path.Combine(temporary, name), ct);
+                foreach (string name in ReportNames) hashes[name] = await SpeedFiles.Hash(Path.Combine(temporary, name), ct);
                 string metadata = Path.Combine(temporary, ".report.json");
                 await SpeedFiles.Write(metadata, new Manifest(FormatVersion, report.Run.Id, hash, DateTimeOffset.UtcNow, hashes), ct);
                 File.SetAttributes(metadata, File.GetAttributes(metadata) | FileAttributes.Hidden);
@@ -59,7 +62,7 @@ public static class SpeedReportFiles
             {
                 if (Directory.Exists(temporary))
                 {
-                    foreach (string name in new[] { SummaryName, WorkbookName, IssuesName, ".report.json" })
+                    foreach (string name in ReportNames.Append(".report.json"))
                         try { File.Delete(Path.Combine(temporary, name)); } catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
                     try { Directory.Delete(temporary, false); } catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
                 }

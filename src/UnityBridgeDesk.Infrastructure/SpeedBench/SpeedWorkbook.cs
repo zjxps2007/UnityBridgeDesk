@@ -81,7 +81,7 @@ public static class SpeedWorkbook
         summary.Add(["실험", "조건", "후보 버전", "계획 블록", "유효 블록", "제외 블록", "기준 평균(ms)", "후보 평균(ms)", "시간 감소율"]);
         int compareHeader = summary.Count;
         summary.AddRange(report.Comparisons.Select(c => new object?[] { c.Experiment, c.Condition, c.Candidate, c.Planned, c.Valid, c.Planned - c.Valid, c.BaselineMs, c.CandidateMs, new Percent(c.ReductionPercent / 100) }));
-        summary.Add([]); summary.Add(["F01·F03: ms/호출. F02: ms/전체 작업. 서로 다른 실험의 시간을 합산하지 않습니다."]);
+        summary.Add([]); summary.Add(["F01·F03·F04·S01: ms/호출. F02: ms/전체 작업. 서로 다른 실험의 시간을 합산하지 않습니다."]);
         summary.Add(["표본이 작은 예비 비교입니다. 신뢰구간·전체 우열을 판정하지 않습니다. 제외 이유는 시행기록에서 확인하세요."]);
         var blocks = Rows("같은 블록의 버전 비교");
         blocks.Add(["실험", "조건", "블록", "기준 버전", "후보 버전", "기준시간(ms)", "후보시간(ms)", "비교 포함", "차이(ms)", "단위", "기준 시행 ID", "후보 시행 ID"]);
@@ -93,13 +93,21 @@ public static class SpeedWorkbook
             t.Result?.Guest?.Samples.Length, t.Included ? "포함" : "제외", t.Reason, t.Trial.Id.ToString(), t.Result?.Guest?.PreparationMs, t.Result?.Guest?.WorkMs }));
         var samples = Rows("개별 호출 표본 · 한 행 = 측정된 CLI 호출 1회");
         samples[4] = ["실패 시행의 부분 표본도 보존합니다. F02의 전체 시간은 시행기록에서 확인하세요. 본문 크기와 stdout 크기는 다릅니다."];
-        samples.Add(["시행", "블록", "실험", "조건", "버전", "호출", "호출시간(ms)", "stdout 크기(B)", "시행 상태", "시행 통계", "시행 ID"]);
+        samples.Add(["시행", "블록", "실험", "조건", "버전", "호출", "호출시간(ms)", "stdout 크기(B)", "시행 상태", "시행 통계", "시행 ID", "호출 판정", "호출 오류", "시작 오프셋(ms)", "오류 내용"]);
         samples.AddRange(report.Trials.SelectMany(t => (t.Result?.Guest?.Samples ?? []).Select(s => new object?[] { t.Order, t.Block, t.Experiment, t.Condition,
-            t.Release, s.Index + 1, s.Milliseconds, s.Bytes, t.Status, t.Included ? "포함" : "제외", t.Trial.Id.ToString() })));
+            t.Release, s.Index + 1, s.Milliseconds, s.Bytes, t.Status, t.Included ? "포함" : "제외", t.Trial.Id.ToString(),
+            s.Outcome ?? "기록 없음", SpeedFailure.Label(s.Outcome == "success" ? "none" : s.FailureKind), s.OffsetMs, s.Error })));
+        var stability = Rows("안정성 · 시행과 호출을 구분");
+        stability[4] = ["유효 완료 / 종료 시행(사용자 중단 제외). 과거 기록의 오류·호출 판정은 추정하지 않습니다. 호출 P95는 성공 호출의 관찰 분포이며 독립 표본 신뢰구간이 아닙니다."];
+        stability.Add(["실험", "조건", "버전", "계획", "종료", "유효", "유효 완료율", "중단", "미수행", "시간 초과", "응답 불일치", "정리 실패", "기타", "미분류", "관측 호출", "성공 호출", "실패 호출", "판정 없음", "시행 최소(ms)", "시행 최대(ms)", "시행 표준편차(ms)", "성공 호출 P95(ms)", "부하 처리량(요청/초)"]);
+        stability.AddRange(report.Stability.Select(s => new object?[] { s.Experiment, s.Condition, s.Release, s.Planned, s.Finished, s.Valid,
+            new Percent(s.SuccessPercent / 100), s.Cancelled, s.NotRun, s.Timeouts, s.Mismatches, s.CleanupFailures, s.OtherFailures, s.UnknownFailures,
+            s.CallsObserved, s.CallsVerified, s.CallsFailed, s.CallsUnknown, s.MinimumMs, s.MaximumMs, s.StandardDeviationMs, s.CallP95Ms, s.RequestsPerSecond }));
         return [new("결과요약", [12, 23, 19, 13, 13, 13, 20, 20, 23], summary, 7, summaryEnd, [compareHeader]),
             new("블록비교", [12, 23, 10, 19, 19, 20, 20, 13, 20, 23, 40, 40], blocks, 7, blocks.Count, []),
             new("시행기록", [10, 10, 12, 23, 19, 16, 14, 20, 15, 14, 65, 40, 20, 26], trials, 7, trials.Count, []),
-            new("호출표본", [10, 10, 12, 23, 19, 10, 20, 20, 16, 14, 40], samples, 7, samples.Count, [])];
+            new("호출표본", [10, 10, 12, 23, 19, 10, 20, 20, 16, 14, 40, 16, 24, 22, 65], samples, 7, samples.Count, []),
+            new("안정성", [12, 23, 19, 12, 12, 12, 18, 12, 12, 14, 16, 14, 12, 12, 15, 15, 15, 15, 20, 20, 23, 24, 24], stability, 7, stability.Count, [])];
     }
     private static XElement Cell(string reference, object? value, int style)
     {

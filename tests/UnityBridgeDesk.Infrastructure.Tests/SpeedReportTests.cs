@@ -25,6 +25,11 @@ public sealed class SpeedReportTests
         Assert.Contains("시간 20.0% 감소", pair.Change);
         Assert.IsNull(report.Trials[3].WorkMs); Assert.IsNull(report.Trials[5].WorkMs);
         Assert.Contains("미수행 1", report.Memo()); Assert.Contains("공동 유효 1/3블록", report.Text());
+        Assert.Contains("vB 버전이 vA 버전보다 호출당 평균 20.00 ms 빨랐다", report.Memo());
+        Assert.Contains("vA 100.00 ms", report.Memo());
+        Assert.DoesNotContain("vA 200.00 ms", report.Memo());
+        Assert.Contains("2블록은 비교에서 제외", report.Memo());
+        Assert.Contains("한 블록의 비교", report.Memo());
         Assert.Contains("cleanup-failed", JsonSerializer.Serialize(run));
     }
 
@@ -37,9 +42,30 @@ public sealed class SpeedReportTests
         Assert.IsTrue(report.Summaries.All(s => s.Mean is null && s.Valid == 0));
         Assert.AreEqual("비교 불가", report.Comparisons.Single().Change);
         var empty = new SpeedReport(run with { Plan = [], Results = [], Releases = [] });
-        Assert.Contains("실행 계획이 없습니다", empty.Memo()); Assert.HasCount(0, empty.Comparisons);
+        Assert.Contains("실행 계획이 없다", empty.Memo()); Assert.HasCount(0, empty.Comparisons);
+        Assert.Contains("비교할 수 없다", report.Memo()); Assert.DoesNotContain("빨랐다", report.Memo());
         var cancelled = new SpeedReport(run with { Results = [run.Results[0] with { Status = "cancelled" }], Status = "cancelled" });
         Assert.AreEqual(1, cancelled.Cancelled); Assert.AreEqual(0, cancelled.Valid); Assert.Contains("부분 결과", cancelled.State);
+    }
+
+    [TestMethod]
+    [DataRow("F01", 80d, "vB 버전이 vA 버전보다 호출당 평균 20.00 ms 빨랐다", "vA 대비 완료 시간이 20.0% 짧았다")]
+    [DataRow("F01", 150d, "vA 버전이 vB 버전보다 호출당 평균 50.00 ms 빨랐다", "vB 대비 완료 시간이 33.3% 짧았다")]
+    [DataRow("F02", 80d, "vB 버전이 vA 버전보다 전체 작업당 평균 20.00 ms 빨랐다", "vA 대비 완료 시간이 20.0% 짧았다")]
+    [DataRow("F03", 150d, "vA 버전이 vB 버전보다 호출당 평균 50.00 ms 빨랐다", "vB 대비 완료 시간이 33.3% 짧았다")]
+    [DataRow("F01", 100d, "평균 완료 시간이 100.00 ms로 같았다", "공동 유효 1/1블록")]
+    [DataRow("F01", 100.0001d, "차이는 0.01 ms 미만이었다", "표시 정밀도 내에서 빠른 버전을 구분하지 않는다")]
+    public void NarrativeNamesFasterVersionAndUsesSlowerMeanAsPercentageDenominator(string experiment, double candidateMs, string expected, string basis)
+    {
+        var run = SpeedReportSample.Create();
+        string variant = experiment == "F02" ? "10" : experiment == "F03" ? "1024" : "prepared";
+        var plan = run.Plan.Take(2).Select(t => t with { Experiment = experiment, Variant = variant }).ToArray();
+        var records = run.Results.Take(2).Select((r, i) => r with
+        { Trial = plan[i], Guest = r.Guest! with { WorkMs = i == 0 ? 100 : candidateMs } }).ToArray();
+        var report = new SpeedReport(run with { Plan = plan, Results = records, Status = "completed" });
+        Assert.Contains(expected, report.Memo()); Assert.Contains(basis, report.Memo());
+        Assert.Contains(expected, report.Text());
+        if (candidateMs >= 100 && candidateMs < 100.005) Assert.DoesNotContain("빨랐다", report.Memo());
     }
 
     [TestMethod]
@@ -68,6 +94,17 @@ public sealed class SpeedReportTests
         string copy = await SpeedReportFiles.Export(root, report);
         Assert.AreNotEqual(first, copy); Assert.AreEqual(copy, await SpeedReportFiles.Export(root, report));
         Assert.AreEqual("user edits", await File.ReadAllTextAsync(Path.Combine(first, SpeedReportFiles.WorkbookName)));
+        string metadata = Path.Combine(copy, ".report.json");
+        var oldFormat = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(metadata))!;
+        oldFormat["formatVersion"] = 1;
+        File.SetAttributes(metadata, FileAttributes.Normal);
+        await File.WriteAllTextAsync(metadata, oldFormat.ToJsonString());
+        File.SetAttributes(metadata, FileAttributes.Hidden);
+        string upgraded = await SpeedReportFiles.Export(root, report);
+        Assert.AreNotEqual(copy, upgraded);
+        Assert.AreEqual(upgraded, await SpeedReportFiles.Export(root, report));
+        Assert.Contains("평균 20.00 ms 빨랐다", await File.ReadAllTextAsync(Path.Combine(upgraded, SpeedReportFiles.SummaryName)));
+        Assert.IsTrue(Directory.Exists(copy));
         Assert.AreEqual(before, await SpeedFiles.Hash(evidence));
         Assert.HasCount(0, Directory.GetDirectories(Path.Combine(root, "speed", "reports"), ".writing-*"));
     }
@@ -79,8 +116,8 @@ public sealed class SpeedReportTests
         string folder = await SpeedReportFiles.Export(root, new SpeedReport(SpeedReportSample.Create()));
         using var zip = ZipFile.OpenRead(Path.Combine(folder, SpeedReportFiles.WorkbookName));
         XDocument Read(string name) { using var stream = zip.GetEntry(name)!.Open(); return XDocument.Load(stream); }
-        Assert.HasCount(4, Read("xl/workbook.xml").Descendants(S + "sheet").ToArray());
-        for (int i = 1; i <= 4; i++)
+        Assert.HasCount(5, Read("xl/workbook.xml").Descendants(S + "sheet").ToArray());
+        for (int i = 1; i <= 5; i++)
         {
             var sheet = Read($"xl/worksheets/sheet{i}.xml");
             Assert.IsNotNull(sheet.Root!.Element(S + "autoFilter"));

@@ -22,7 +22,9 @@ public sealed class LocalSpeedCoordinator(string dataRoot, IProcessRunner runner
     public async Task<SpeedRun> Run(string editor, SpeedRelease[] releases, SpeedOptions options, string workerDirectory,
         IProgress<string>? progress, CancellationToken ct)
     {
-        options.Validate(); var plan = SpeedProtocol.Schedule(options, releases.Select(r => r.Tag).ToArray());
+        options.Validate();
+        if (options.Selected.Contains("S01") && options.StressCommands is null) options = options with { StressCommands = SpeedStress.DefaultCommands };
+        var plan = SpeedProtocol.Schedule(options, releases.Select(r => r.Tag).ToArray());
         var environment = await InspectEditor(editor, ct);
         foreach (var release in releases) if (!await ReleaseRepository.Valid(release, ct)) throw new IOException("릴리스 보관 파일이 변경되었습니다: " + release.Tag);
         string worker = Path.Combine(workerDirectory, "UnityBridgeDesk.Worker.exe"), fixture = Path.Combine(workerDirectory, "Assets", "DeskProbe.cs.txt");
@@ -42,7 +44,8 @@ public sealed class LocalSpeedCoordinator(string dataRoot, IProcessRunner runner
             var life = Stopwatch.StartNew(); string token = Guid.NewGuid().ToString("N");
             string root = Path.Combine(LocalWorkspace.Parent(dataRoot), trial.Id.ToString("N"));
             string evidence = Path.Combine(output, trial.Id.ToString("N"));
-            GuestResult? result = null; string? error = null; bool cleaned = false;
+            GuestResult? result = null; string? error = null, failureKind = null, failureStage = null; bool cleaned = false;
+            string stage = "preparation";
             var release = releases.Single(r => r.Tag == trial.Tag);
             var request = new GuestRequest(id, trial, options, environment.EditorVersion, "", "", release.CliSha256,
                 release.ConnectorSha256, release.Version, fixtureHash, token, CliDistribution.IsBundle(release.CliUrl),
@@ -59,8 +62,10 @@ public sealed class LocalSpeedCoordinator(string dataRoot, IProcessRunner runner
                 await SpeedFiles.Write(Path.Combine(evidence, "host-before.json"), new { at = DateTimeOffset.UtcNow,
                     availableMemoryBytes = memory.Available, memoryLoadPercent = memory.Load, logicalProcessors = Environment.ProcessorCount }, ct);
                 if (await SpeedFiles.Hash(editor, ct) != environment.EditorSha256) throw new IOException("시행 중 Unity 실행 파일이 변경되었습니다.");
-                int calls = trial.Experiment == "F02" ? int.Parse(trial.Variant) + 2 : trial.Variant == "first" ? 1 : options.Calls;
+                int calls = trial.Experiment == "S01" ? (int)Math.Ceiling((double)options.StressRequests / options.StressConcurrency) :
+                    trial.Experiment == "F02" ? int.Parse(trial.Variant) + 2 : trial.Variant == "first" ? 1 : options.Calls;
                 var timeout = TimeSpan.FromSeconds(options.PrepareSeconds + (long)(calls + options.Warmups) * options.TimeoutSeconds + 90);
+                stage = "worker";
                 var reply = await runner.RunAsync(new(Guid.NewGuid(), worker, ["--local-trial", Path.Combine(root, "request.json"), Path.Combine(root, "result.json")], root,
                     Environment: LocalWorkspace.EnvironmentFor(root)), timeout, frame =>
                     {
@@ -75,17 +80,22 @@ public sealed class LocalSpeedCoordinator(string dataRoot, IProcessRunner runner
                 await SpeedFiles.Write(Path.Combine(evidence, "worker.json"), reply);
                 if (File.Exists(Path.Combine(root, "result.json")))
                 {
+                    stage = "validation";
                     result = await SpeedFiles.Read<GuestResult>(Path.Combine(root, "result.json"));
                     SpeedCoordinator.ValidateResult(request, result, LocalWorkspace.Schema);
                     if (reply.ProcessId != result.GuestPid) throw new IOException("측정기 프로세스가 결과와 다릅니다.");
                     await SpeedFiles.Write(Path.Combine(evidence, "result.json"), result);
                 }
                 if (reply.Outcome != ProcessOutcome.Exited || reply.ExitCode != 0 || result?.Status != "success")
+                {
                     error = result?.Error ?? $"측정기 {reply.Outcome} / 종료 코드 {reply.ExitCode} · {reply.Error}";
+                    failureKind = result?.FailureKind ?? (reply.Outcome == ProcessOutcome.Exited ? "worker-error" : SpeedFailure.ProcessKind(reply.Outcome));
+                    failureStage = result?.FailureStage ?? "worker";
+                }
             }
             catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or
                 InvalidOperationException or JsonException or OperationCanceledException or System.ComponentModel.Win32Exception)
-            { error = ex.Message; }
+            { error = ex.Message; failureKind = SpeedFailure.Classify(ex, stage); failureStage = stage; }
             finally
             {
                 progress?.Report($"{trial.Order}/{plan.Length} · 결과 보관 · 시험 프로세스와 임시 파일 정리");
@@ -97,10 +107,11 @@ public sealed class LocalSpeedCoordinator(string dataRoot, IProcessRunner runner
                     cleaned = !Directory.Exists(root);
                 }
                 catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or JsonException or System.ComponentModel.Win32Exception)
-                { error = (error is null ? "" : error + " / ") + "정리 실패: " + ex.Message; }
+                { error = (error is null ? "" : error + " / ") + "정리 실패: " + ex.Message; failureKind = "cleanup-error"; failureStage = "cleanup"; }
             }
             string status = !cleaned ? "cleanup-failed" : ct.IsCancellationRequested ? "cancelled" : error is null ? "success" : "failed";
-            results.Add(new(trial, status, result, error, cleaned, life.Elapsed.TotalMilliseconds));
+            results.Add(new(trial, status, result, error, cleaned, life.Elapsed.TotalMilliseconds,
+                ct.IsCancellationRequested && cleaned ? "cancelled" : failureKind, failureStage));
             run = run with { Results = results.ToArray() };
             await SpeedFiles.Write(Path.Combine(output, "run.json"), run);
             await File.WriteAllTextAsync(Path.Combine(output, "samples.csv"), SpeedAnalysis.Csv(run));
@@ -125,7 +136,7 @@ public sealed class LocalSpeedCoordinator(string dataRoot, IProcessRunner runner
         if (!Directory.Exists(root)) return;
         Directory.CreateDirectory(evidence);
         // Logs are copied after timing. Dump filenames/sizes are recorded; large dumps are not carried into the next trial.
-        foreach (string name in new[] { "editor.log", "ready.json", "editor-process.json", "result.json" })
+        foreach (string name in new[] { "editor.log", "ready.json", "editor-process.json", "result.json", SpeedExec.SourceName, SpeedExec.NonceName })
         {
             string file = Path.Combine(root, name); if (!File.Exists(file)) continue; SpeedFiles.Regular(file);
             await using var input = File.Open(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);

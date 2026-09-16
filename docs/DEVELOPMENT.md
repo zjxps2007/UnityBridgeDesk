@@ -33,6 +33,10 @@ Desktop / SpeedBenchWindow
 
 새 구현은 `src/UnityBridgeDesk.Infrastructure/SpeedBench/`와 Desktop의 `SpeedBenchWindow.xaml(.cs)`에 있습니다. 설정은 `speed/local-settings.json`, 기록은 `speed/local-runs/`를 사용합니다. 이전 MainWindow·DeskRuntime·AI·VirtualBox 경로는 회귀 검사와 기록 호환성을 위해 소스에 남겨두었으며 기본 화면에 연결하지 않습니다.
 
+v0.4.0에서 `SpeedExec`는 고정 C# 입력과 해시, `SpeedStress`는 시나리오 검증과 동시 요청 제한, `SpeedFailure`는 응답·오류 분류를 담당합니다. `SpeedStability`가 시행·호출 통계를 구분하고 `SpeedCharts`와 WPF `SpeedChartView`가 같은 집계를 그립니다. 외부 차트 라이브러리 없이 SVG·WPF로 표시합니다. `SpeedStabilityTests`는 동시 요청 수, 중단 조건, 분모, P95, 처리량, exec 입력 불변성과 결과 메타데이터를 검사합니다.
+
+전체 검사는 [v0.4.0 검증 기록](V040-VALIDATION.md)에 별도로 정리합니다. 실험 선택과 호출 판정 필드는 기존 로컬 스키마에 추가하며 과거 기록의 nullable 필드를 허용합니다. 읽기용 보고서는 형식 4로 구분합니다.
+
 `Worker --local-trial`은 소유 표식, 요청·결과 경로, 자식 프로세스에 전달한 TEMP/TMP·UPM 환경을 확인합니다. WorkerRunner의 시작 허가 전에 Job Object에 연결하며 취소·종료 시 묶음의 프로세스가 종료될 때까지 기다립니다. 기존 개인 Unity 프로세스를 검색해 종료하지 않습니다. 개발 실행은 같은 구성으로 빌드한 Worker 출력을 사용하고, 배포본은 `worker/`를 사용합니다.
 
 기존 `Worker --vm-trial`은 여전히 게스트 표식을 요구합니다. `--fixture`, `--smoke`, `--smoke-ai`, `--integration` 등은 별도 진단 경로이며 현재 로컬 속도 결과와 구분합니다.
@@ -53,12 +57,12 @@ Desktop / SpeedBenchWindow
 pwsh -File ./build/Publish-Desk.ps1
 # 위 명령이 출력한 실제 경로를 사용합니다.
 pwsh -File ./build/Package-Desk.ps1 -BundlePath 'C:/.../UnityBridgeDesk-win-x64-날짜시간'
-pwsh -File ./build/Verify-Package.ps1 -PackagePath './dist/UnityBridgeDesk-v0.3.0-win-x64'
+pwsh -File ./build/Verify-Package.ps1 -PackagePath './dist/UnityBridgeDesk-v0.4.0-win-x64'
 ```
 
-Publish는 .NET 런타임을 포함한 Desktop·Worker와 사용 문서를 만듭니다. 버전은 `Directory.Build.props`를 기준으로 고정하며 배포 명세에 기록합니다. Package는 상단의 **UnityBridge Desk 실행.exe**, **처음 읽기.txt**, **app/**로 구성한 `UnityBridgeDesk-v0.3.0-win-x64.zip`을 만듭니다. Verify-Package는 실행 파일 버전·배포 해시·ZIP 내용과 옮긴 한글 경로에서의 실행 대상·인수 전달을 검사합니다. 같은 버전 폴더와 ZIP은 덮어쓰지 않습니다.
+Publish는 .NET 런타임을 포함한 Desktop·Worker와 사용 문서를 만듭니다. 버전은 `Directory.Build.props`를 기준으로 고정하며 배포 명세에 기록합니다. Package는 상단의 **UnityBridge Desk 실행.exe**, **처음 읽기.txt**, **app/**로 구성한 `UnityBridgeDesk-v0.4.0-win-x64.zip`을 만듭니다. Verify-Package는 실행 파일 버전·배포 해시·ZIP 내용과 옮긴 한글 경로에서의 실행 대상·인수 전달을 검사합니다. 같은 버전 폴더와 ZIP은 덮어쓰지 않습니다.
 
-현재 배포는 **v0.3.0 정식**입니다. 기본 실험은 예비 설정이며 분석은 기술 통계입니다. 실제 Unity 통합 시험 범위와 다양한 PC·Unity 버전에서 남은 확인 범위는 검증 문서에 구분합니다. Unity·Bridge 바이너리, Windows 이미지, 개인 데이터는 동봉하지 않습니다. 라이선스와 외부 구성 요소 고지, .NET 런타임 고지는 함께 보관합니다.
+현재 배포는 **v0.4.0 정식**입니다. 기본 실험은 예비 설정이며 분석은 기술 통계입니다. 실제 Unity 통합 시험 범위와 다양한 PC·Unity 버전에서 남은 확인 범위는 검증 문서에 구분합니다. Unity·Bridge 바이너리, Windows 이미지, 개인 데이터는 동봉하지 않습니다. 라이선스와 외부 구성 요소 고지, .NET 런타임 고지는 함께 보관합니다.
 
 ## 소스·아이콘·CI
 

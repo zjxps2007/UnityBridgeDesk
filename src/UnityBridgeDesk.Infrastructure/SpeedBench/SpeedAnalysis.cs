@@ -40,7 +40,7 @@ public static class SpeedAnalysis
     }
     public static string Csv(SpeedRun run)
     {
-        var csv = new StringBuilder("schema,runId,trialId,block,order,release,experiment,condition,status,resetVerified,workMs,sampleIndex,sampleMs,bytes\n");
+        var csv = new StringBuilder("schema,runId,trialId,block,order,release,experiment,condition,status,resetVerified,workMs,sampleIndex,sampleMs,bytes,failureKind,failureStage,sampleOutcome,sampleFailure,sampleOffsetMs,sampleError\n");
         static string Cell(object? value) => "\"" + (Convert.ToString(value, CultureInfo.InvariantCulture) ?? "").Replace("\"", "\"\"") + "\"";
         foreach (var trial in run.Plan)
         {
@@ -48,7 +48,9 @@ public static class SpeedAnalysis
             SpeedSample?[] samples = result?.Guest?.Samples is { Length: > 0 } raw ? raw.Cast<SpeedSample?>().ToArray() : [null];
             foreach (var sample in samples)
                 csv.AppendLine(string.Join(',', new object?[] { run.Schema, run.Id, trial.Id, trial.Block, trial.Order, trial.Tag, trial.Experiment, trial.Variant,
-                    result?.Status ?? "not-run", result?.ResetVerified, result?.Guest?.WorkMs, sample?.Index, sample?.Milliseconds, sample?.Bytes }.Select(Cell)));
+                    result?.Status ?? "not-run", result?.ResetVerified, result?.Guest?.WorkMs, sample?.Index, sample?.Milliseconds, sample?.Bytes,
+                    result?.FailureKind ?? result?.Guest?.FailureKind, result?.FailureStage ?? result?.Guest?.FailureStage,
+                    sample?.Outcome, sample?.FailureKind, sample?.OffsetMs, sample?.Error }.Select(Cell)));
         }
         return csv.ToString();
     }

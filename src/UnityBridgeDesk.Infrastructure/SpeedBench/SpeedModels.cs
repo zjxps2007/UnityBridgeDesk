@@ -3,15 +3,18 @@ using System.Text.Json;
 namespace UnityBridgeDesk.Infrastructure.SpeedBench;
 
 public sealed record SpeedOptions(int Repeats = 2, int Warmups = 1, int Calls = 3, int TimeoutSeconds = 180,
-    int PrepareSeconds = 600, int Seed = 20260915, string[]? Experiments = null)
+    int PrepareSeconds = 600, int Seed = 20260915, string[]? Experiments = null,
+    int StressRequests = 32, int StressConcurrency = 4, StressCommand[]? StressCommands = null)
 {
     public string[] Selected => Experiments ?? ["F01"];
     public void Validate()
     {
         if (Repeats is < 1 or > 100 || Warmups is < 0 or > 100 || Calls is < 1 or > 1000 ||
-            TimeoutSeconds is < 1 or > 3600 || PrepareSeconds is < 30 or > 3600 || Selected.Length is < 1 or > 3 ||
-            Selected.Distinct().Count() != Selected.Length || Selected.Any(x => x is not ("F01" or "F02" or "F03")))
+            TimeoutSeconds is < 1 or > 3600 || PrepareSeconds is < 30 or > 3600 || Selected.Length is < 1 or > 5 ||
+            StressRequests is < 1 or > 1000 || StressConcurrency is < 1 or > 16 || StressConcurrency > StressRequests ||
+            Selected.Distinct().Count() != Selected.Length || Selected.Any(x => x is not ("F01" or "F02" or "F03" or "F04" or "S01")))
             throw new ArgumentException("실험·반복·준비 호출·제한 시간을 확인해 주세요.");
+        if (Selected.Contains("S01")) SpeedStress.ValidateCommands(StressCommands ?? SpeedStress.DefaultCommands);
     }
 }
 public sealed record ReleaseChoice(long Id, string Tag, string Version, string Title, bool Prerelease,
@@ -33,14 +36,16 @@ public sealed record GuestRequest(Guid RunId, SpeedTrial Trial, SpeedOptions Opt
     string VmId, string SnapshotId, string CliSha256, string ConnectorSha256, string ConnectorVersion,
     string FixtureSha256, string GuestNonce, bool CliIsBundle = false, string? CliTreeSha256 = null, string? ExpectedReportedConnectorVersion = null);
 public sealed record GuestReady(Guid RunId, Guid TrialId, string GuestNonce, string UnityVersion);
-public sealed record SpeedSample(int Index, double Milliseconds, int Bytes);
+public sealed record SpeedSample(int Index, double Milliseconds, int Bytes,
+    string? Outcome = null, string? FailureKind = null, double? OffsetMs = null, string? Error = null);
 public sealed record GuestResult(Guid RunId, Guid TrialId, string GuestNonce, string Schema, string Status,
     string? Error, double PreparationMs, double? WorkMs, double ValidationMs, SpeedSample[] Samples,
     int GuestPid, string GuestMachine, string UnityVersion, string CliSha256, string ConnectorSha256,
     string FixtureSha256, long ClockFrequency, string[] Commands, double? ReadyToFirstMs = null,
-    string? CliTreeSha256 = null, string? ReportedConnectorVersion = null);
+    string? CliTreeSha256 = null, string? ReportedConnectorVersion = null,
+    string? FailureKind = null, string? FailureStage = null, string? ExecSourceSha256 = null, double? MeasurementMs = null);
 public sealed record SpeedTrialResult(SpeedTrial Trial, string Status, GuestResult? Guest, string? Error,
-    bool ResetVerified, double HostLifecycleMs);
+    bool ResetVerified, double HostLifecycleMs, string? FailureKind = null, string? FailureStage = null);
 public sealed record SpeedRun(Guid Id, DateTimeOffset StartedAt, string Schema, string Evidence,
     SpeedOptions Options, VmProfile? Machine, SpeedRelease[] Releases, SpeedTrial[] Plan,
     SpeedTrialResult[] Results, string Status, string HostDescription, LocalEnvironment? Local = null);
@@ -54,7 +59,9 @@ public static class SpeedProtocol
     {
         options.Validate();
         return options.Selected.SelectMany(id => (id switch {
-            "F01" => new[] { "first", "prepared" }, "F02" => ["1", "10", "100"], _ => ["1024", "65536", "1048576"]
+            "F01" or "F04" => new[] { "first", "prepared" }, "F02" => ["1", "10", "100"],
+            "F03" => ["1024", "65536", "1048576"],
+            "S01" => (options.StressCommands ?? SpeedStress.DefaultCommands).Select(c => c.Id).ToArray(), _ => []
         }).Select(v => new SpeedCase(id, v))).ToArray();
     }
     public static SpeedTrial[] Schedule(SpeedOptions options, string[] tags)

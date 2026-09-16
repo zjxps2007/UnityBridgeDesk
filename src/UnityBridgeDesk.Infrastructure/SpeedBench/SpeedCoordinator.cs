@@ -10,6 +10,7 @@ public sealed class SpeedCoordinator(string dataRoot, VirtualBoxHost host)
         SpeedRelease[] releases, SpeedOptions options, string workerDirectory, IProgress<string>? progress, CancellationToken ct)
     {
         options.Validate();
+        if (options.Selected.Contains("S01") && options.StressCommands is null) options = options with { StressCommands = SpeedStress.DefaultCommands };
         if (string.IsNullOrWhiteSpace(guestUser) || string.IsNullOrEmpty(password)) throw new ArgumentException("게스트 Windows 사용자와 암호를 입력하세요. 암호는 저장하지 않습니다.");
         string worker = Path.Combine(workerDirectory, "UnityBridgeDesk.Worker.exe"), fixture = Path.Combine(workerDirectory, "Assets", "DeskProbe.cs.txt");
         if (!File.Exists(worker) || !File.Exists(Path.Combine(workerDirectory, "coreclr.dll")) || !File.Exists(fixture))
@@ -57,7 +58,8 @@ public sealed class SpeedCoordinator(string dataRoot, VirtualBoxHost host)
                         "') { throw 'Input hash mismatch' }; Expand-Archive -LiteralPath 'C:\\UnityBridgeBench\\input.zip' -DestinationPath 'C:\\UnityBridgeBench\\Trial'", ct);
                     progress?.Report($"{trial.Order}/{plan.Length} · {trial.Tag} · Unity 준비·게스트 속도 측정");
                     await SpeedFiles.Write(Path.Combine(trialDir, "state.json"), new { trial.Id, phase = "guest-measuring" }, ct);
-                    int callCount = trial.Experiment == "F02" ? int.Parse(trial.Variant) + options.Warmups + 2 : options.Calls + options.Warmups;
+                    int callCount = trial.Experiment == "S01" ? (int)Math.Ceiling((double)options.StressRequests / options.StressConcurrency) :
+                        trial.Experiment == "F02" ? int.Parse(trial.Variant) + options.Warmups + 2 : options.Calls + options.Warmups;
                     string? commandError = null;
                     try
                     {
@@ -94,7 +96,9 @@ public sealed class SpeedCoordinator(string dataRoot, VirtualBoxHost host)
                     catch (IOException e) { reset = false; error = (error is null ? "" : error + " / ") + "호스트 입력 파일 정리 실패: " + e.Message; }
                 }
                 string status = ct.IsCancellationRequested ? "cancelled" : !reset ? "isolation-failed" : error is null && guest?.Status == "success" ? "success" : "failed";
-                results.Add(new(trial, status, guest, error, reset, life.Elapsed.TotalMilliseconds));
+                results.Add(new(trial, status, guest, error, reset, life.Elapsed.TotalMilliseconds,
+                    !reset ? "cleanup-error" : ct.IsCancellationRequested ? "cancelled" : guest?.FailureKind,
+                    !reset ? "cleanup" : guest?.FailureStage));
                 run = run with { Results = results.ToArray() };
                 await SpeedFiles.Write(Path.Combine(directory, "run.json"), run, CancellationToken.None);
                 if (!reset) { run = run with { Status = "isolation-failed" }; break; }
@@ -140,12 +144,22 @@ public sealed class SpeedCoordinator(string dataRoot, VirtualBoxHost host)
             result.Schema != schema || result.CliSha256 != request.CliSha256 || result.ConnectorSha256 != request.ConnectorSha256 ||
             result.FixtureSha256 != request.FixtureSha256 || result.CliTreeSha256 != request.CliTreeSha256 || result.GuestPid <= 0 || result.ClockFrequency <= 0 ||
             result.Status is not ("success" or "failed" or "cancelled")) throw new IOException("다른 시행이거나 불완전한 게스트 결과입니다.");
-        if (result.Samples.Any(s => !double.IsFinite(s.Milliseconds) || s.Milliseconds < 0 || s.Bytes < 0) ||
+        if (result.Samples.Any(s => s is null || !double.IsFinite(s.Milliseconds) || s.Milliseconds < 0 || s.Bytes < 0 || s.Index < 0 ||
+                s.OffsetMs is { } offset && (!double.IsFinite(offset) || offset < 0) ||
+                s.Outcome is not (null or "unverified" or "success" or "failed")) ||
+            result.Samples.Select(s => s.Index).Distinct().Count() != result.Samples.Length ||
+            result.MeasurementMs is { } measured && (!double.IsFinite(measured) || measured < 0) ||
             !double.IsFinite(result.PreparationMs) || result.PreparationMs < 0 || !double.IsFinite(result.ValidationMs) || result.ValidationMs < 0)
             throw new IOException("올바르지 않은 시간 표본입니다.");
         if (result.Status != "success") return;
-        int expected = request.Trial.Experiment == "F02" ? int.Parse(request.Trial.Variant) : request.Trial.Variant == "first" ? 1 : request.Options.Calls;
+        int expected = request.Trial.Experiment == "S01" ? request.Options.StressRequests :
+            request.Trial.Experiment == "F02" ? int.Parse(request.Trial.Variant) : request.Trial.Variant == "first" ? 1 : request.Options.Calls;
+        if (SpeedExec.UsesExec(request.Trial) && result.ExecSourceSha256 != SpeedExec.Sha256 ||
+            request.Trial.Experiment == "S01" && (result.MeasurementMs is not > 0 || !double.IsFinite(result.MeasurementMs.Value) ||
+                result.Samples.Any(s => s.Outcome != "success")))
+            throw new IOException("exec 소스 또는 부하 시험 검증 정보가 다릅니다.");
         if (result.Samples.Length != expected || result.WorkMs is not { } work || !double.IsFinite(work) || work <= 0 ||
+            result.FailureKind is not null || result.Samples.Any(s => s.Outcome is "failed" or "unverified" || s.FailureKind is not null) ||
             !result.UnityVersion.StartsWith(request.UnityVersion + "_", StringComparison.Ordinal) || result.Error is not null ||
             result.ReportedConnectorVersion != (request.ExpectedReportedConnectorVersion ?? request.ConnectorVersion) ||
             !result.Samples.Select(s => s.Index).SequenceEqual(Enumerable.Range(0, expected))) throw new IOException("성공 결과의 표본·버전·시간이 명세와 다릅니다.");

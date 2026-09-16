@@ -46,6 +46,9 @@ public static class SpeedGuest
         request.Options.Validate();
         var prep = Stopwatch.StartNew(); double preparation = 0, validation = 0; double? work = null, readyGap = null;
         var samples = new List<SpeedSample>(); var commands = new List<string>(); string unityVersion = "", status = "failed"; string? error = null;
+        string stage = "preparation"; string? failureKind = null;
+        bool usesExec = SpeedExec.UsesExec(request.Trial);
+        double? measurementMs = null;
         UnityEnvironment? unity = null; string? reportedConnector = null, cliTreeHash = null;
         try
         {
@@ -89,6 +92,7 @@ public static class SpeedGuest
             await SpeedFiles.Write(Path.Combine(project, "Packages", "manifest.json"), new { dependencies = new Dictionary<string, string> {
                 [LocalInspector.ConnectorPackageName] = "file:" + connector.Replace('\\', '/') } }, ct);
             await UnityEnvironment.InstallFixtureAsync(project, ct, fixture);
+            if (usesExec) await SpeedExec.WriteSource(root, ct);
             var runner = new TimedProcessRunner(); var discovery = new InstanceDiscovery(InstanceDiscovery.DefaultDirectory);
             var target = new BridgeTarget(project, editor, cli, request.CliSha256,
                 RequiredConnectorVersion: request.ExpectedReportedConnectorVersion ?? request.ConnectorVersion);
@@ -114,13 +118,62 @@ public static class SpeedGuest
             }
             await Task.Delay(500, ct); // Fixed settling interval after the final host-to-guest transfer.
             if (local is not null) Console.WriteLine("Bridge 준비 완료 · 고정 명령 측정");
+            if (request.Trial.Experiment == "S01")
+            {
+                var scenario = (request.Options.StressCommands ?? SpeedStress.DefaultCommands).Single(c => c.Id == request.Trial.Variant);
+                preparation = prep.Elapsed.TotalMilliseconds; stage = "measurement";
+                var batch = await SpeedStress.Run(request.Options.StressRequests, request.Options.StressConcurrency, async (index, offset, token) =>
+                {
+                    string nonce = Guid.NewGuid().ToString("N");
+                    var parameters = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(scenario.ParametersJson)!;
+                    if (scenario.Command == "desk_probe") parameters["nonce"] = JsonSerializer.SerializeToElement(nonce);
+                    string[] args = ["--json", "--no-update-check", "--project", project, "--port", before.Port.ToString(),
+                        "--instances-dir", InstanceDiscovery.DefaultDirectory, "--timeout-ms", ((long)request.Options.TimeoutSeconds * 1000).ToString(),
+                        "call", scenario.Command, "--params", JsonSerializer.Serialize(parameters)];
+                    lock (commands) commands.Add(JsonSerializer.Serialize(args));
+                    var reply = await new TimedProcessRunner().RunAsync(new(Guid.NewGuid(), cli, [..args], project,
+                        Environment: new() { ["PYTHONIOENCODING"] = "utf-8", ["PYTHONUTF8"] = "1" }, OutputCodePage: checked((int)GetACP())),
+                        TimeSpan.FromSeconds(request.Options.TimeoutSeconds), cancellationToken: token);
+                    var sample = new SpeedSample(index, reply.ElapsedMilliseconds, Encoding.UTF8.GetByteCount(reply.Output), OffsetMs: offset);
+                    try
+                    {
+                        var data = SpeedFailure.ReadData(reply);
+                        if (scenario.Command == "desk_probe")
+                        {
+                            var value = SpeedFailure.ReadValue(reply, nonce, before.Pid, project);
+                            if (parameters.GetValueOrDefault("action").GetString() == "payload")
+                                ValidateValue("F03", parameters["size"].GetInt32().ToString(), value);
+                        }
+                        if (scenario.ExpectedDataJson is not null)
+                        {
+                            using var expected = JsonDocument.Parse(scenario.ExpectedDataJson);
+                            if (!SpeedStress.Matches(data, expected.RootElement))
+                                throw new SpeedMeasurementException("response-mismatch", "명령의 실제 결과가 시나리오의 기대 결과와 다릅니다.");
+                        }
+                        return sample with { Outcome = "success" };
+                    }
+                    catch (Exception e) when (e is IOException or JsonException or InvalidOperationException or KeyNotFoundException)
+                    { return sample with { Outcome = "failed", FailureKind = SpeedFailure.Classify(e, "validation"), Error = e.Message[..Math.Min(e.Message.Length, 1600)] }; }
+                }, ct);
+                samples.AddRange(batch.Samples); measurementMs = batch.ElapsedMs;
+                ct.ThrowIfCancellationRequested();
+                if (batch.FailureKind is not null) throw new SpeedMeasurementException(batch.FailureKind, batch.Error ?? "부하 요청 실패");
+                if (samples.Count != request.Options.StressRequests) throw new SpeedMeasurementException("execution-error", "부하 요청이 모두 완료되지 않았습니다.");
+                stage = "validation";
+                var afterStress = discovery.Find(target, before.Port);
+                if (afterStress.CompileErrors || afterStress.State != scenario.ExpectedEditorState)
+                    throw new SpeedMeasurementException("response-mismatch", $"부하 실행 후 Editor가 기대 상태({scenario.ExpectedEditorState})와 다릅니다.");
+                work = samples.Average(s => s.Milliseconds); status = "success";
+            }
+            else
+            {
             var clock = new TimedProcessRunner(); var timeout = TimeSpan.FromSeconds(request.Options.TimeoutSeconds);
             (ProcessCommand Command, string Nonce) Prepare(string action, Dictionary<string, object>? values = null)
             {
                 values ??= []; string nonce = Guid.NewGuid().ToString("N"); values["action"] = action; values["nonce"] = nonce;
                 string[] args = ["--json", "--no-update-check", "--project", project, "--port", before.Port.ToString(),
                     "--instances-dir", InstanceDiscovery.DefaultDirectory, "--timeout-ms", ((long)timeout.TotalMilliseconds).ToString(),
-                    "call", "desk_probe", "--params", JsonSerializer.Serialize(values)];
+                    ..(usesExec ? SpeedExec.Arguments(root) : ["call", "desk_probe", "--params", JsonSerializer.Serialize(values)])];
                 commands.Add(JsonSerializer.Serialize(args));
                 return (new(Guid.NewGuid(), cli, [..args], project, Environment: new() { ["PYTHONIOENCODING"] = "utf-8", ["PYTHONUTF8"] = "1" },
                     OutputCodePage: checked((int)GetACP())), nonce);
@@ -130,68 +183,86 @@ public static class SpeedGuest
                 var timer = Stopwatch.StartNew();
                 try
                 {
-                    if (result.Outcome != ProcessOutcome.Exited || result.ExitCode != 0)
-                        throw new IOException("CLI " + result.Outcome + " / 종료 코드 " + result.ExitCode + " / " + result.Error[..Math.Min(1200, result.Error.Length)]);
-                    using var json = JsonDocument.Parse(result.Output); var data = json.RootElement.GetProperty("data");
-                    if (json.RootElement.GetProperty("success").ValueKind != JsonValueKind.True || data.GetProperty("nonce").GetString() != nonce ||
-                        data.GetProperty("pid").GetInt32() != before.Pid || !InstanceDiscovery.SamePath(data.GetProperty("projectPath").GetString()!, project))
-                        throw new InvalidDataException("이번 시행의 정확한 응답이 아닙니다.");
-                    return data.GetProperty("value").Clone();
+                    return SpeedFailure.ReadValue(result, nonce, before.Pid, project);
                 }
                 finally { validation += timer.Elapsed.TotalMilliseconds; }
             }
             void CheckValue(string experimentId, string condition, JsonElement value)
             { var timer = Stopwatch.StartNew(); try { ValidateValue(experimentId, condition, value); } finally { validation += timer.Elapsed.TotalMilliseconds; } }
             async Task<JsonElement> Untimed(string action, Dictionary<string, object>? values = null)
-            { var call = Prepare(action, values); return Validate(await clock.RunAsync(call.Command, timeout, cancellationToken: ct), call.Nonce); }
+            {
+                var call = Prepare(action, values);
+                if (usesExec) await SpeedExec.WriteNonce(root, call.Nonce, ct);
+                return Validate(await clock.RunAsync(call.Command, timeout, cancellationToken: ct), call.Nonce);
+            }
             string experiment = request.Trial.Experiment, variant = request.Trial.Variant;
             if (!SpeedProtocol.Cases(request.Options).Any(c => c.Experiment == experiment && c.Variant == variant)) throw new IOException("계획에 없는 실험입니다.");
             if (experiment == "F02") await Untimed("create", new() { ["count"] = 1000 });
-            if (!(experiment == "F01" && variant == "first"))
+            stage = "warmup";
+            if (!(experiment is "F01" or "F04" && variant == "first"))
                 for (int i = 0; i < request.Options.Warmups; i++)
                 {
                     var value = await Untimed(experiment == "F03" ? "payload" : "echo", experiment == "F03" ? new() { ["size"] = int.Parse(variant) } : null);
                     CheckValue(experiment == "F03" ? "F03" : "F01", variant, value);
                 }
-            int count = experiment == "F02" ? int.Parse(variant) : experiment == "F01" && variant == "first" ? 1 : request.Options.Calls;
+            int count = experiment == "F02" ? int.Parse(variant) : experiment is "F01" or "F04" && variant == "first" ? 1 : request.Options.Calls;
             var calls = Enumerable.Range(0, count).Select(i => Prepare(experiment switch { "F02" => "move", "F03" => "payload", _ => "echo" },
                 experiment == "F02" ? new() { ["start"] = i * (1000 / count), ["count"] = 1000 / count } :
                 experiment == "F03" ? new() { ["size"] = int.Parse(variant) } : null)).ToArray();
             before = discovery.Find(target, before.Port);
             if (before.State != "ready" || before.CompileErrors) throw new IOException("측정 직전 Unity 준비 상태가 바뀌었습니다.");
             preparation = prep.Elapsed.TotalMilliseconds;
+            stage = "measurement";
             var replies = new List<ProcessResult>(); long batchStart = 0, batchEnd = 0;
             for (int i = 0; i < calls.Length; i++)
             {
+                if (usesExec) await SpeedExec.WriteNonce(root, calls[i].Nonce, ct);
                 var reply = await clock.RunAsync(calls[i].Command, timeout, cancellationToken: ct);
                 if (i == 0) { batchStart = clock.LastStartedTimestamp; readyGap = Stopwatch.GetElapsedTime(ready, batchStart).TotalMilliseconds; }
                 batchEnd = clock.LastCompletedTimestamp;
-                replies.Add(reply); samples.Add(new(i, reply.ElapsedMilliseconds, Encoding.UTF8.GetByteCount(reply.Output)));
+                replies.Add(reply); samples.Add(new(i, reply.ElapsedMilliseconds, Encoding.UTF8.GetByteCount(reply.Output),
+                    "unverified", OffsetMs: Stopwatch.GetElapsedTime(batchStart, clock.LastStartedTimestamp).TotalMilliseconds));
                 if (reply.Outcome != ProcessOutcome.Exited || reply.ExitCode != 0) break;
             }
-            if (replies.Count != calls.Length) throw new IOException("명령열을 완료하지 못했습니다.");
-            for (int i = 0; i < replies.Count; i++) CheckValue(experiment, variant, Validate(replies[i], calls[i].Nonce));
-            if (experiment == "F02" && !(await Untimed("inspect", new() { ["count"] = 1000 })).GetBoolean()) throw new IOException("오브젝트 개수·ID·위치 검증 실패.");
+            stage = "validation";
+            Exception? validationError = null;
+            for (int i = 0; i < replies.Count; i++)
+            {
+                try { CheckValue(experiment, variant, Validate(replies[i], calls[i].Nonce)); samples[i] = samples[i] with { Outcome = "success" }; }
+                catch (Exception e) when (e is IOException or JsonException or InvalidOperationException or KeyNotFoundException or FormatException)
+                { samples[i] = samples[i] with { Outcome = "failed", FailureKind = SpeedFailure.Classify(e, stage), Error = e.Message }; validationError ??= e; }
+            }
+            if (validationError is not null) throw validationError;
+            if (replies.Count != calls.Length) throw new SpeedMeasurementException("cli-error", "명령열을 완료하지 못했습니다.");
+            if (experiment == "F02" && !(await Untimed("inspect", new() { ["count"] = 1000 })).GetBoolean()) throw new SpeedMeasurementException("response-mismatch", "오브젝트 개수·ID·위치 검증 실패.");
             var after = discovery.Find(target, before.Port);
-            if (after.State != "ready" || after.CompileErrors) throw new IOException("응답 후 대상 상태 검증 실패.");
+            if (after.State != "ready" || after.CompileErrors) throw new SpeedMeasurementException("response-mismatch", "응답 후 대상 상태 검증 실패.");
             work = experiment == "F02" ? Stopwatch.GetElapsedTime(batchStart, batchEnd).TotalMilliseconds : samples.Average(s => s.Milliseconds);
             status = "success";
+            }
         }
-        catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or InvalidOperationException or JsonException or KeyNotFoundException or TimeoutException or OperationCanceledException or System.ComponentModel.Win32Exception)
-        { error = e.Message; status = e is OperationCanceledException ? "cancelled" : "failed"; if (preparation == 0) preparation = prep.Elapsed.TotalMilliseconds; }
-        finally { if (unity is not null) await unity.DisposeAsync(); }
+        catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or InvalidOperationException or JsonException or KeyNotFoundException or FormatException or TimeoutException or OperationCanceledException or System.ComponentModel.Win32Exception)
+        { error = e.Message; failureKind = SpeedFailure.Classify(e, stage); status = e is OperationCanceledException ? "cancelled" : "failed"; if (preparation == 0) preparation = prep.Elapsed.TotalMilliseconds; }
+        finally
+        {
+            if (unity is not null)
+                try { await unity.DisposeAsync(); }
+                catch (Exception e) when (e is IOException or InvalidOperationException or System.ComponentModel.Win32Exception)
+                { error = (error is null ? "" : error + " / ") + "Unity 종료 실패: " + e.Message; failureKind = "cleanup-error"; stage = "cleanup"; status = "failed"; }
+        }
         return new(request.RunId, request.Trial.Id, request.GuestNonce, local is null ? SpeedProtocol.Schema : LocalWorkspace.Schema, status, error, preparation, work, validation,
             samples.ToArray(), Environment.ProcessId, Environment.MachineName, unityVersion, request.CliSha256, request.ConnectorSha256,
-            request.FixtureSha256, Stopwatch.Frequency, commands.ToArray(), readyGap, cliTreeHash, reportedConnector);
+            request.FixtureSha256, Stopwatch.Frequency, commands.ToArray(), readyGap, cliTreeHash, reportedConnector,
+            failureKind, failureKind is null ? null : stage, usesExec ? SpeedExec.Sha256 : null, measurementMs);
     }
     private static void ValidateValue(string experiment, string variant, JsonElement value)
     {
-        if (experiment == "F01" && value.GetInt32() != 42) throw new IOException("고정 응답 값 검증 실패.");
-        if (experiment == "F02" && value.GetInt32() != 1000 / int.Parse(variant)) throw new IOException("이동 작업 수 검증 실패.");
+        if (experiment is "F01" or "F04" && value.GetInt32() != 42) throw new SpeedMeasurementException("response-mismatch", "고정 응답 값 검증 실패.");
+        if (experiment == "F02" && value.GetInt32() != 1000 / int.Parse(variant)) throw new SpeedMeasurementException("response-mismatch", "이동 작업 수 검증 실패.");
         if (experiment == "F03")
         {
             string text = value.GetString() ?? ""; int expected = int.Parse(variant);
-            if (text.Length != expected || text.Where((c, i) => c != 'A' + i % 26).Any()) throw new IOException("응답 길이·본문 검증 실패.");
+            if (text.Length != expected || text.Where((c, i) => c != 'A' + i % 26).Any()) throw new SpeedMeasurementException("response-mismatch", "응답 길이·본문 검증 실패.");
         }
     }
 }

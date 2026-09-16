@@ -584,21 +584,33 @@ public sealed class RenderTests
         var memo=(TextBox)window.FindName("ResultMemo");PumpUntil(()=>memo.Text.Contains("미수행 1"));
         Assert.Contains("실패 1",memo.Text);Assert.Contains("정리 실패 1",memo.Text);
         var trialGrid=(DataGrid)window.FindName("Trials");Assert.AreEqual(6,trialGrid.Items.Count);
+        var clearFilters=(Button)window.FindName("ClearTrialFiltersButton");Assert.IsFalse(clearFilters.IsEnabled);
+        object summarySource=((DataGrid)window.FindName("Summary")).ItemsSource;
+        object comparisonSource=((DataGrid)window.FindName("PairSummary")).ItemsSource;
         var statusFilter=(ComboBox)window.FindName("StatusFilter");statusFilter.SelectedIndex=1;
         Assert.AreEqual(1,trialGrid.Items.Count);
+        Assert.IsTrue(clearFilters.IsEnabled);
         Assert.Contains("제외",((TextBox)window.FindName("TrialDetails")).Text);
         statusFilter.SelectedIndex=4;Assert.AreEqual(1,trialGrid.Items.Count);
         Assert.IsFalse(((Button)window.FindName("TrialFolderButton")).IsEnabled);
         statusFilter.SelectedIndex=0;Assert.AreEqual(6,trialGrid.Items.Count);
         var summary=(DataGrid)window.FindName("Summary");summary.SelectedIndex=0;
         Assert.AreEqual(3,trialGrid.Items.Count);
-        ((ComboBox)window.FindName("ReleaseFilter")).SelectedIndex=0;Assert.AreEqual(6,trialGrid.Items.Count);
+        clearFilters.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Assert.AreEqual(6,trialGrid.Items.Count);
+        Assert.IsFalse(clearFilters.IsEnabled);
+        Assert.AreSame(summarySource,summary.ItemsSource);
+        Assert.AreSame(comparisonSource,((DataGrid)window.FindName("PairSummary")).ItemsSource);
         Assert.IsTrue(((WrapPanel)window.FindName("ResultExportActions")).IsEnabled);
         var tabs=(TabControl)window.FindName("Tabs");Assert.AreEqual(3,tabs.Items.Count);
         var rc=((StackPanel)window.FindName("ReleaseList")).Children.OfType<CheckBox>().Single(c=>c.Content.ToString()!.Contains("rc.2"));
         Assert.IsTrue(rc.IsEnabled);Assert.IsFalse(rc.IsChecked);Assert.Contains("런타임",rc.Content.ToString()!);rc.IsChecked=true;
         Assert.IsTrue(((TextBlock)window.FindName("EditorStatus")).Text.Contains("찾지 못했습니다"));
         Assert.AreEqual(48.0,((TextBlock)window.FindName("Clock")).FontSize);
+        Assert.IsNotNull(window.FindName("F04"));Assert.IsNotNull(window.FindName("S01"));
+        var metric=(ComboBox)window.FindName("ChartMetric");metric.SelectedIndex=1;
+        Assert.Contains("사용자 중단",((TextBlock)window.FindName("ChartHint")).Text);
+        Assert.AreEqual(2,((DataGrid)window.FindName("StabilityTable")).Items.Count);
+        Assert.AreSame(summarySource,summary.ItemsSource);metric.SelectedIndex=0;
         Assert.IsNull(window.FindName("GuestPassword")); Assert.IsNull(window.FindName("VmList"));
         var repeats=(TextBox)window.FindName("Repeats");repeats.Text="invalid";
         var reset=(Button)window.FindName("ResetButton");reset.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));PumpUntil(()=>form.IsEnabled);
@@ -633,10 +645,44 @@ public sealed class RenderTests
         var small=new RenderTargetBitmap(1440,900,144,144,PixelFormats.Pbgra32);small.Render(content);
         var smallEncoder=new PngBitmapEncoder();smallEncoder.Frames.Add(BitmapFrame.Create(small));
         using(var file=File.Create(Path.Combine(directory,"speed-results-small-150.png")))smallEncoder.Save(file);
+        metric.SelectedIndex=1;content.UpdateLayout();
+        var stabilityImage=new RenderTargetBitmap(1440,900,144,144,PixelFormats.Pbgra32);stabilityImage.Render(content);
+        var stabilityEncoder=new PngBitmapEncoder();stabilityEncoder.Frames.Add(BitmapFrame.Create(stabilityImage));
+        using(var file=File.Create(Path.Combine(directory,"speed-stability-small-150.png")))stabilityEncoder.Save(file);
+        metric.SelectedIndex=0;
         ((ScrollViewer)window.FindName("ResultDetailsScroll")).ScrollToBottom();content.UpdateLayout();
         var detail=new RenderTargetBitmap(1440,900,144,144,PixelFormats.Pbgra32);detail.Render(content);
         var detailEncoder=new PngBitmapEncoder();detailEncoder.Frames.Add(BitmapFrame.Create(detail));
         using(var file=File.Create(Path.Combine(directory,"speed-results-details-150.png")))detailEncoder.Save(file);
+
+        // WPF popup input needs a native owner; keep the fixture window invisible and off screen.
+        window.ShowInTaskbar=false;window.ShowActivated=false;window.Opacity=0;
+        window.WindowStartupLocation=WindowStartupLocation.Manual;window.Left=-30000;window.Top=-30000;
+        window.Show();
+        foreach(string name in new[]{"SummaryMenuButton","FolderMenuButton","ManagementMenuButton"})
+        {
+            var button=(Button)window.FindName(name);
+            if(name=="SummaryMenuButton")
+                button.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(button),Environment.TickCount,Key.Down){RoutedEvent=Keyboard.PreviewKeyDownEvent});
+            else button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var menu=button.ContextMenu;
+            try
+            {
+                PumpUntil(()=>menu.IsOpen && menu.ActualWidth>0);
+                Assert.AreSame(button,menu.PlacementTarget);
+                Assert.AreEqual(PlacementMode.Bottom,menu.Placement);
+                menu.UpdateLayout();
+                foreach(MenuItem item in menu.Items)
+                    Assert.IsTrue(item.ActualHeight>=32,"Menu entries must have an unclipped click target.");
+                var image=new RenderTargetBitmap((int)Math.Ceiling(menu.ActualWidth*1.5),(int)Math.Ceiling(menu.ActualHeight*1.5),144,144,PixelFormats.Pbgra32);image.Render(menu);
+                var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(image));
+                using var file=File.Create(Path.Combine(directory,$"speed-{name}-150.png"));encoder.Save(file);
+                menu.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(menu),Environment.TickCount,Key.Escape){RoutedEvent=Keyboard.PreviewKeyDownEvent});
+                Assert.IsFalse(menu.IsOpen,"Escape must dismiss an action menu.");
+            }
+            finally { menu.IsOpen=false; }
+        }
+        window.Hide();
 
 
         bool closed=false;window.Closed+=(_,_)=>closed=true;window.Close();PumpUntil(()=>closed);

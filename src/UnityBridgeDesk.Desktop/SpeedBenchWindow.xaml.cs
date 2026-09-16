@@ -3,6 +3,8 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Threading;
 using System.Windows.Media.Imaging;
 using Microsoft.Win32;
@@ -32,6 +34,7 @@ public partial class SpeedBenchWindow : Window
     private bool[]? undoExperiments;
     private bool loaded;
     private bool closeAfterCleanup;
+    private bool closed;
     private record HistoryItem(string Label, string Path);
     public SpeedBenchWindow(string root, LocalDiscovery? discovery = null)
     {
@@ -40,11 +43,11 @@ public partial class SpeedBenchWindow : Window
         var icon = BitmapDecoder.Create(new Uri("pack://application:,,,/UnityBridgeDesk;component/Assets/desk.ico"), BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
         MascotImage.Source = icon.Frames.MaxBy(f => f.PixelWidth);
         clockTimer.Tick += (_, _) => UpdateClock(); UpdateClock(); clockTimer.Start();
-        Closed += (_, _) => clockTimer.Stop();
+        Closed += (_, _) => { closed = true; clockTimer.Stop(); };
     }
     private string SettingsPath => Path.Combine(dataRoot, "speed", "local-settings.json");
-    private TextBox[] OptionFields => [Repeats, Warmups, Calls, Timeout, PrepareTimeout, Seed];
-    private CheckBox[] ExperimentFields => [F01, F02, F03];
+    private TextBox[] OptionFields => [Repeats, Warmups, Calls, Timeout, PrepareTimeout, Seed, StressRequests, StressConcurrency, StressScenarios];
+    private CheckBox[] ExperimentFields => [F01, F02, F03, F04, S01];
     private void UpdateClock() { Clock.Text = DateTime.Now.ToString("HH:mm"); Date.Text = DateTime.Now.ToString("yyyy.MM.dd  ddd"); }
     private async void WindowLoaded(object sender, RoutedEventArgs e)
     {
@@ -86,20 +89,26 @@ public partial class SpeedBenchWindow : Window
         {
             operation.Dispose(); operation = null; PreparationForm.IsEnabled = true; History.IsEnabled = true; ResultExportActions.IsEnabled = shownReport is not null;
             CancelButton.Visibility = Visibility.Collapsed; Activity.IsIndeterminate = false;
-            if (closeAfterCleanup) Close();
+            // Save can complete synchronously inside Closing; defer the second Close until that event returns.
+            if (closeAfterCleanup) _ = Dispatcher.BeginInvoke(DispatcherPriority.Background,
+                new Action(() => { if (!closed && operation is null) Close(); }));
         }
     }
     private SpeedOptions ReadOptions()
     {
         int Read(TextBox box) => int.TryParse(box.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) ? value : throw new ArgumentException("횟수와 제한 시간에는 정수를 입력하세요.");
         var value = new SpeedOptions(Read(Repeats), Read(Warmups), Read(Calls), Read(Timeout), Read(PrepareTimeout), Read(Seed),
-            ExperimentFields.Where(c => c.IsChecked == true).Select(c => c.Name).ToArray()); value.Validate(); return value;
+            ExperimentFields.Where(c => c.IsChecked == true).Select(c => c.Name).ToArray(), Read(StressRequests), Read(StressConcurrency),
+            string.IsNullOrWhiteSpace(StressScenarios.Text) ? null :
+                System.Text.Json.JsonSerializer.Deserialize<StressCommand[]>(StressScenarios.Text, SpeedProtocol.Json)
+                    ?? throw new ArgumentException("시나리오는 JSON 배열이어야 합니다.")); value.Validate(); return value;
     }
     private void ApplyOptions(SpeedOptions options)
     {
-        int[] values = [options.Repeats, options.Warmups, options.Calls, options.TimeoutSeconds, options.PrepareSeconds, options.Seed];
+        int[] values = [options.Repeats, options.Warmups, options.Calls, options.TimeoutSeconds, options.PrepareSeconds, options.Seed, options.StressRequests, options.StressConcurrency];
         for (int i = 0; i < values.Length; i++) OptionFields[i].Text = values[i].ToString(CultureInfo.InvariantCulture);
         foreach (var c in ExperimentFields) c.IsChecked = options.Selected.Contains(c.Name);
+        StressScenarios.Text = options.StressCommands is null ? "" : System.Text.Json.JsonSerializer.Serialize(options.StressCommands, SpeedProtocol.Json);
     }
     private ReleaseChoice[] Selected() => ReleaseList.Children.OfType<CheckBox>().Where(c => c.IsChecked == true).Select(c => (ReleaseChoice)c.Tag).ToArray();
     private void DrawReleases(ReleaseChoice[] releases)
@@ -119,7 +128,7 @@ public partial class SpeedBenchWindow : Window
     {
         SpeedOptions options;
         try { options = ReadOptions(); }
-        catch (ArgumentException) when (tolerateInvalidOptions) { options = settings.Options ?? new(); }
+        catch (Exception e) when (tolerateInvalidOptions && e is ArgumentException or System.Text.Json.JsonException) { options = settings.Options ?? new(); }
         settings = settings with { EditorPath = (EditorList.SelectedItem as LocalCandidate)?.Path ?? settings.EditorPath,
             Options = options, SelectedTags = Selected().Select(r => r.Tag).ToArray() };
         await SpeedFiles.Write(SettingsPath, settings, ct);
@@ -202,6 +211,8 @@ public partial class SpeedBenchWindow : Window
         var report = new SpeedReport(run); shownRun = run; shownReport = report;
         updatingFilters = true;
         Summary.ItemsSource = report.Summaries; PairSummary.ItemsSource = report.Comparisons;
+        StabilityTable.ItemsSource = report.Stability;
+        ChartCondition.ItemsSource = SpeedCharts.Build(report); ChartCondition.SelectedIndex = 0;
         ExperimentFilter.ItemsSource = new[] { "전체 실험" }.Concat(report.Trials.Select(t => t.Experiment).Distinct()).ToArray();
         ReleaseFilter.ItemsSource = new[] { "전체 버전" }.Concat(run.Releases.Select(r => r.Tag)).ToArray();
         ExperimentFilter.SelectedIndex = ReleaseFilter.SelectedIndex = StatusFilter.SelectedIndex = 0;
@@ -211,7 +222,7 @@ public partial class SpeedBenchWindow : Window
         Comparison.Text = $"기준: {report.Baseline} · 같은 조건의 공동 유효 블록만 비교합니다. 조건별 표와 평균이 다를 수 있습니다.";
         ResultExportActions.IsEnabled = operation is null;
         ReportStatus.Text = "";
-        NextStep.Text = "짧은 결과 메모를 먼저 읽고, 엑셀이나 결과 폴더에서 자세히 확인하세요.";
+        NextStep.Text = "요약 메모 → TXT 열기에서 평균 시간 차이를 읽고, 분석 Excel이나 시행 상세에서 확인하세요.";
     }
     private async Task<string?> BuildReport(SpeedReport report, CancellationToken ct)
     {
@@ -219,24 +230,59 @@ public partial class SpeedBenchWindow : Window
         try
         {
             string folder = await Task.Run(() => SpeedReportFiles.Export(dataRoot, report, ct), ct);
-            if (shownReport == report) ReportStatus.Text = "결과 파일 준비 완료 · 요약 TXT / 분석 Excel / 실패 내역";
+            if (shownReport == report) ReportStatus.Text = "결과 파일 준비 완료 · 요약 TXT / 분석 Excel / 실패 내역 / 그래프 SVG";
             return folder;
         }
         catch (OperationCanceledException) { ReportStatus.Text = "보고서 작성을 중단했습니다. 저장된 벤치 결과는 유지됩니다."; return null; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or System.Text.Json.JsonException)
-        { ReportStatus.Text = "보고서를 저장하지 못했습니다. 엑셀 또는 결과 폴더 버튼으로 다시 시도하세요. " + error.Message; return null; }
+        { ReportStatus.Text = "보고서를 저장하지 못했습니다. 요약 메모 → TXT 열기, 분석 Excel 열기 또는 자료 폴더 → 보고서 폴더에서 다시 시도하세요. " + error.Message; return null; }
     }
-    private async void ResultsFolderClicked(object sender, RoutedEventArgs e) => await OpenReport(false);
-    private async void ExcelClicked(object sender, RoutedEventArgs e) => await OpenReport(true);
-    private async Task OpenReport(bool excel)
+    private void ChartSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ResultChart is null || ChartMetric is null || ChartHint is null) return;
+        bool stability = ChartMetric.SelectedIndex == 1;
+        ResultChart.Show(ChartCondition.SelectedItem as ReportChart, stability);
+        ChartHint.Text = stability ? "유효 완료 / 종료 시행입니다. 사용자 중단·미수행은 제외합니다. 작은 표본의 100%가 안정성을 보장하지 않습니다." :
+            "막대: 유효 시행 평균 · 선: 최소–최대(신뢰구간 아님). 실패는 0ms로 넣지 않습니다. 조건별로 축 범위가 다릅니다.";
+    }
+    private void ActionMenuClicked(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { IsEnabled: true, ContextMenu: { } menu } button)
+        {
+            menu.PlacementTarget = button; menu.Placement = PlacementMode.Bottom; menu.VerticalOffset = 4;
+            menu.IsOpen = true;
+        }
+    }
+    private void ActionMenuOpened(object sender, RoutedEventArgs e)
+    {
+        if (sender is ContextMenu menu)
+        {
+            menu.Focus();
+            menu.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));
+        }
+    }
+    private void ActionMenuPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape || sender is not ContextMenu menu) return;
+        menu.IsOpen = false; menu.PlacementTarget?.Focus(); e.Handled = true;
+    }
+    private void ActionMenuKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Down) return;
+        ActionMenuClicked(sender, e); e.Handled = true;
+    }
+    private async void ResultsFolderClicked(object sender, RoutedEventArgs e) => await OpenReport(null);
+    private async void ExcelClicked(object sender, RoutedEventArgs e) => await OpenReport(SpeedReportFiles.WorkbookName);
+    private async void SummaryTextClicked(object sender, RoutedEventArgs e) => await OpenReport(SpeedReportFiles.SummaryName);
+    private async Task OpenReport(string? fileName)
     {
         if (shownReport is not { } report) return;
-        await Work(async ct => { if (await BuildReport(report, ct) is { } folder) Open(excel ? Path.Combine(folder, SpeedReportFiles.WorkbookName) : folder); });
+        await Work(async ct => { if (await BuildReport(report, ct) is { } folder) Open(fileName is null ? folder : Path.Combine(folder, fileName)); });
     }
     private void CopySummaryClicked(object sender, RoutedEventArgs e)
     {
         if (shownReport is null) return;
-        try { Clipboard.SetText(shownReport.Memo()); ReportStatus.Text = "짧은 결과 메모를 복사했습니다."; }
+        try { Clipboard.SetText(shownReport.Memo()); ReportStatus.Text = "조건별 평균 시간 차이를 정리한 메모를 복사했습니다."; }
         catch (System.Runtime.InteropServices.ExternalException) { ReportStatus.Text = "다른 앱이 클립보드를 사용 중입니다. 잠시 후 다시 복사하세요."; }
     }
     private void RawResultsFolderClicked(object sender, RoutedEventArgs e)
@@ -278,6 +324,8 @@ public partial class SpeedBenchWindow : Window
         Trials.ItemsSource = rows;
         Trials.SelectedItem = rows.FirstOrDefault(t => !t.Included) ?? rows.FirstOrDefault();
         TrialScope.Text = $"{rows.Length}/{shownReport.Trials.Length}개 시행 표시" + (condition is null ? "" : " · " + condition);
+        ClearTrialFiltersButton.IsEnabled = ExperimentFilter.SelectedIndex > 0 || ReleaseFilter.SelectedIndex > 0 ||
+            StatusFilter.SelectedIndex > 0 || condition is not null;
     }
     private void LegacyFolderClicked(object sender, RoutedEventArgs e)
     { Open(dataRoot); }

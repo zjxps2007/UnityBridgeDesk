@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$BundlePath)
+param([Parameter(Mandatory=$true)][string]$BundlePath,[string]$OutputRoot)
 $ErrorActionPreference = 'Stop'
 $deskRoot = Split-Path -Parent $PSScriptRoot
 $deskBundle = (Resolve-Path -LiteralPath $BundlePath).Path
@@ -13,7 +13,7 @@ foreach ($deskFile in $deskManifest.files) {
 $deskCompiler = (Get-Command gcc.exe -ErrorAction Stop).Source
 $deskResourceCompiler = (Get-Command windres.exe -ErrorAction Stop).Source
 $deskName = "UnityBridgeDesk-v$deskVersion-win-x64"
-$deskPackage = Join-Path $deskRoot "dist/$deskName"
+$deskPackage = if ($OutputRoot) { Join-Path ([IO.Path]::GetFullPath($OutputRoot)) $deskName } else { Join-Path $deskRoot "dist/$deskName" }
 if ((Test-Path -LiteralPath $deskPackage) -or (Test-Path -LiteralPath ($deskPackage + '.zip'))) { throw 'This version is already packaged. Use a new version or explicitly preserve the previous package elsewhere.' }
 New-Item -ItemType Directory -Path (Join-Path $deskRoot '.cache/package-build') -Force | Out-Null
 # MinGW's linker accepts ANSI paths; keep its arguments ASCII and copy with Unicode-aware PowerShell.
@@ -52,9 +52,10 @@ Windows 사용자 설정과 공용 캐시는 공유합니다.
 상세 안내: app/docs/USAGE.md · app/docs/LOCAL-BENCH.md
 벤치 근거: app/BENCHMARK-README.md
 RC 설치 변경: app/docs/RC-INSTALL.md
-결과 확인: 앱의 「3 결과」 → 요약 복사 / 엑셀 열기 / 결과 폴더
-결과 폴더에는 요약 TXT·분석 Excel·실패 내역이 저장됩니다.
-JSON·CSV·로그는 「원본 자료」에서 확인하세요.
+결과 확인: 앱의 「3 결과」 → 요약 메모 / 분석 Excel 열기 / 자료 폴더
+요약 메모 메뉴에서 TXT 열기 또는 메모 복사를 선택하세요.
+결과 폴더에는 요약 TXT·분석 Excel·실패 내역·SVG 그래프이 저장됩니다.
+JSON·CSV·로그는 「자료 폴더 → 원본·로그 폴더」에서 확인하세요.
 원시 결과에는 개인 경로가 포함될 수 있습니다. 자동 익명화 내보내기는 아직 제공하지 않습니다.
 '@
 $deskStartGuide.Replace('UnityBridge Desk ·',"UnityBridge Desk v$deskVersion ·") | Set-Content -LiteralPath (Join-Path $deskPackage '처음 읽기.txt') -Encoding utf8BOM
