@@ -38,7 +38,7 @@
     </Grid>
    </Border>
    <Grid Grid.Row="1" ClipToBounds="True">
-    <Grid.Background><ImageBrush ImageSource="Assets/cloud-station.png" Stretch="UniformToFill" AlignmentY="Center" /></Grid.Background>
+    <Grid.Background><DynamicResource ResourceKey="DeskWallpaper" /></Grid.Background>
     <Border Background="#16FFFFFF" IsHitTestVisible="False" />
     <Grid Margin="24,16,24,32">
      <Grid.RowDefinitions><RowDefinition Height="48" /><RowDefinition Height="*" /></Grid.RowDefinitions>

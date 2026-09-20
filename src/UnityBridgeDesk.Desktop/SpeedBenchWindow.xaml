@@ -1,0 +1,876 @@
+<Window x:Class="UnityBridgeDesk.Desktop.SpeedBenchWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:UnityBridgeDesk.Desktop" xmlns:motion="clr-namespace:UnityBridgeDesk.Desktop.Controls" Title="UnityBridge Desk · 로컬 속도 벤치" Icon="Assets/desk.ico" Width="1440" Height="900" MinWidth="960" MinHeight="660" WindowStartupLocation="CenterScreen" FontFamily="Segoe UI, Malgun Gothic" FontSize="13" Background="{DynamicResource Workspace}" UseLayoutRounding="True" Loaded="WindowLoaded" Closing="WindowClosing" PreviewKeyDown="WindowKeyDown">
+ <Window.Resources>
+  <ResourceDictionary>
+   <ResourceDictionary.MergedDictionaries>
+    <ResourceDictionary Source="Themes/BenchControls.xaml" />
+    <ResourceDictionary Source="Themes/BenchNavigation.xaml" />
+    <ResourceDictionary Source="Themes/BenchWorkspace.xaml" />
+   </ResourceDictionary.MergedDictionaries>
+   <Style x:Key="Card" TargetType="Border">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="Padding" Value="0,16,0,22" />
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+    <Setter Property="BorderThickness" Value="0" />
+   </Style>
+   <Style x:Key="Hint" TargetType="TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="Margin" Value="0,6,0,10" />
+    <Setter Property="LineHeight" Value="19" />
+   </Style>
+   <Style x:Key="Heading" TargetType="TextBlock">
+    <Setter Property="motion:AshaSurface.Edge" Value="Top" />
+    <Setter Property="FontSize" Value="16" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Margin" Value="0,0,0,6" />
+    <Setter Property="Foreground" Value="{DynamicResource Ink}" />
+   </Style>
+   <Style TargetType="DataGrid">
+    <Setter Property="Background" Value="{DynamicResource Paper}" />
+    <Setter Property="Foreground" Value="{DynamicResource Ink}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+    <Setter Property="RowHeight" Value="36" />
+    <Setter Property="ColumnHeaderHeight" Value="36" />
+    <Setter Property="GridLinesVisibility" Value="Horizontal" />
+    <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource Line}" />
+    <Setter Property="AlternatingRowBackground" Value="{DynamicResource Workspace}" />
+    <Setter Property="CanUserResizeRows" Value="False" />
+   </Style>
+   <Style TargetType="DataGridColumnHeader">
+    <Setter Property="Background" Value="{DynamicResource Tint}" />
+    <Setter Property="Foreground" Value="{DynamicResource AccentInk}" />
+    <Setter Property="Padding" Value="7,4" />
+    <Setter Property="BorderThickness" Value="0" />
+   </Style>
+   <Style x:Key="NumberCell" TargetType="TextBlock">
+    <Setter Property="Typography.NumeralAlignment" Value="Tabular" />
+    <Setter Property="Margin" Value="7,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="TextAlignment" Value="Right" />
+   </Style>
+   <Style x:Key="ReportCellText" TargetType="TextBlock">
+    <Setter Property="Margin" Value="7,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+   </Style>
+   <Style x:Key="ActionMenuItem" TargetType="MenuItem">
+    <Setter Property="Foreground" Value="{DynamicResource Ink}" />
+    <Setter Property="Padding" Value="12,9" />
+    <Setter Property="Margin" Value="0,1" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="Template">
+     <Setter.Value>
+      <ControlTemplate TargetType="MenuItem">
+       <Border x:Name="MenuSurface" CornerRadius="7" Background="Transparent">
+        <Grid>
+         <Border x:Name="Hover" CornerRadius="7" Background="{DynamicResource Tint}" Opacity="0" IsHitTestVisible="False" />
+         <ContentPresenter ContentSource="Header" Margin="{TemplateBinding Padding}" RecognizesAccessKey="True" />
+        </Grid>
+       </Border>
+       <ControlTemplate.Triggers>
+        <Trigger Property="IsHighlighted" Value="True">
+         <Setter TargetName="Hover" Property="Opacity" Value="1" />
+        </Trigger>
+        <Trigger Property="IsEnabled" Value="False">
+         <Setter Property="Opacity" Value="0.55" />
+        </Trigger>
+       </ControlTemplate.Triggers>
+      </ControlTemplate>
+     </Setter.Value>
+    </Setter>
+   </Style>
+   <Style x:Key="ActionMenu" TargetType="ContextMenu">
+    <EventSetter Event="Opened" Handler="ActionMenuOpened" />
+    <EventSetter Event="PreviewKeyDown" Handler="ActionMenuPreviewKeyDown" />
+    <Setter Property="Background" Value="{DynamicResource Paper}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+    <Setter Property="MinWidth" Value="240" />
+    <Setter Property="FontFamily" Value="Malgun Gothic, Segoe UI" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="ItemContainerStyle" Value="{StaticResource ActionMenuItem}" />
+    <Setter Property="Template">
+     <Setter.Value>
+      <ControlTemplate TargetType="ContextMenu">
+       <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="12" Padding="5">
+        <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Cycle" KeyboardNavigation.TabNavigation="Cycle" />
+       </Border>
+      </ControlTemplate>
+     </Setter.Value>
+    </Setter>
+   </Style>
+   <Style x:Key="ActionSeparator" TargetType="Separator">
+    <Setter Property="Height" Value="1" /><Setter Property="Margin" Value="12,5" />
+    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Separator"><Border Background="{DynamicResource Line}" Height="1" /></ControlTemplate></Setter.Value></Setter>
+   </Style>
+  </ResourceDictionary>
+ </Window.Resources>
+ <Grid Background="{DynamicResource Workspace}">
+ <Grid x:Name="WorkspaceSurface" SizeChanged="SurfaceSizeChanged" Background="{DynamicResource Workspace}">
+  <Grid.RowDefinitions>
+   <RowDefinition x:Name="HeaderRow" Height="104" />
+   <RowDefinition Height="*" />
+   <RowDefinition Height="30" />
+  </Grid.RowDefinitions>
+  <Border x:Name="WorkspaceHeader" motion:AshaSurface.Edge="Bottom" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1" ClipToBounds="True">
+   <Grid>
+    <Image x:Name="LandscapeCover" Width="800" Height="500" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-282,0,0" Stretch="UniformToFill" IsHitTestVisible="False" />
+    <Border x:Name="CoverWash" IsHitTestVisible="False" />
+    <DockPanel Margin="24,10">
+
+           <ContentControl x:Name="MenuSlot" DockPanel.Dock="Right" Margin="20,0,0,0" VerticalAlignment="Center">
+       <Button x:Name="ManagementMenuButton" Content="설정" Click="SettingsClicked" IsEnabled="False" AutomationProperties.Name="설정 열기" ToolTip="화면 · 캐릭터 · 앱 관리" Style="{StaticResource QuietButton}" />
+      </ContentControl>
+     <Border DockPanel.Dock="Right" VerticalAlignment="Center" Margin="20,0,0,0" Background="{DynamicResource HeaderPaper}" CornerRadius="8" Padding="10,0"><StackPanel>
+      <TextBlock x:Name="Clock" FontSize="30" FontFamily="Segoe UI" Foreground="{DynamicResource AccentInk}" />
+      <TextBlock x:Name="Date" FontSize="10" MinHeight="14" Foreground="{DynamicResource Muted}" />
+     </StackPanel></Border>
+     <StackPanel DockPanel.Dock="Left" Width="214" VerticalAlignment="Center">
+      <TextBlock Text="UnityBridge Desk" FontSize="17" FontWeight="SemiBold" />
+      <TextBlock Text="Unity 명령 성능 비교" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,3,0,0" />
+     </StackPanel>
+     <Button x:Name="CurrentRunShortcut" HorizontalAlignment="Left" Click="CurrentRunClicked" ToolTip="현재 실행으로 돌아가기" Style="{StaticResource QuietButton}" HorizontalContentAlignment="Left" VerticalAlignment="Center" IsEnabled="False"><StackPanel>
+      <TextBlock x:Name="SideActivity" Text="현재 실행 중인 벤치 없음" FontSize="12" TextTrimming="CharacterEllipsis" />
+      <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+       <TextBlock x:Name="SideProgress" Text="새 벤치를 준비하세요" FontSize="11" Foreground="{DynamicResource Muted}" />
+       <TextBlock x:Name="Elapsed" Text="경과 00:00" FontSize="11" Foreground="{DynamicResource Muted}" Margin="16,0,0,0" />
+      </StackPanel>
+     </StackPanel></Button>
+    </DockPanel>
+   </Grid>
+  </Border>
+  <Grid Grid.Row="1" Margin="0">
+   <Grid.ColumnDefinitions>
+    <ColumnDefinition x:Name="SidebarColumn" Width="232" />
+    <ColumnDefinition Width="*" />
+   </Grid.ColumnDefinitions>
+   <Border x:Name="Sidebar" Background="{DynamicResource NavigationSurface}" CornerRadius="0" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,1,0" Padding="16,8,16,12">
+    <DockPanel>
+     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+      <Button x:Name="SidebarToggle" DockPanel.Dock="Right" Style="{StaticResource SidebarToggleButton}" Click="SidebarToggleClicked" ToolTip="탐색 목록 접기 · Alt+0" AutomationProperties.Name="탐색 목록 접기">
+       <Grid Width="18" Height="18" IsHitTestVisible="False">
+        <Path Data="M4,3.5 L14,3.5 Q15.5,3.5 15.5,5 L15.5,13 Q15.5,14.5 14,14.5 L4,14.5 Q2.5,14.5 2.5,13 L2.5,5 Q2.5,3.5 4,3.5 M7,3.5 L7,14.5" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.25" StrokeLineJoin="Round" />
+        <Path x:Name="SidebarChevron" Data="{DynamicResource SidebarCollapseChevron}" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.25" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+       </Grid>
+      </Button>
+      <TextBlock x:Name="NavigationTitle" Text="작업 공간" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+     </DockPanel>
+     <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
+      <Button x:Name="DraftShortcut" Click="DraftClicked" ToolTip="벤치 준비 · Ctrl+N" Style="{StaticResource NavigationButton}" Margin="0,0,0,4"><StackPanel Orientation="Horizontal"><Path Width="16" Height="16" Stretch="Uniform" Stroke="{DynamicResource Muted}" StrokeThickness="1.3" Data="M2,1 L12,1 L16,5 L16,19 L2,19 Z M6,8 L12,8 M6,12 L12,12" /><TextBlock x:Name="DraftNavLabel" Text="벤치 준비" Margin="10,0,0,0" /></StackPanel></Button>
+      <Button x:Name="RecordsShortcut" Click="RecordsClicked" ToolTip="실행 기록 · Ctrl+H" Style="{StaticResource NavigationButton}"><StackPanel Orientation="Horizontal"><Path Width="16" Height="16" Stretch="Uniform" Stroke="{DynamicResource Muted}" StrokeThickness="1.3" Data="M2,3 L16,3 L16,18 L2,18 Z M5,7 L13,7 M5,11 L13,11 M5,15 L10,15" /><TextBlock x:Name="RecordsNavLabel" Text="실행 기록" Margin="10,0,0,0" /></StackPanel></Button>
+     </StackPanel>
+     <Border x:Name="SidebarFooter" motion:AshaSurface.Edge="Top" DockPanel.Dock="Bottom" Margin="0,16,0,0" BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0" Padding="0,12,0,0">
+      <Grid>
+       <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" />
+       </Grid.ColumnDefinitions>
+       <TextBlock x:Name="NextStep" Visibility="Collapsed" Text="Unity와 비교할 도구를 선택하세요." TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0" />
+       <Border x:Name="CompanionHome" Grid.Column="1" Width="104" Height="104" IsHitTestVisible="False" />
+      </Grid>
+     </Border>
+     <Grid x:Name="SidebarBody">
+      <TextBlock x:Name="SidebarHeading" Text="준비 목차" FontSize="11" Foreground="{DynamicResource Muted}" Margin="6,0,0,0" VerticalAlignment="Top" />
+      <StackPanel x:Name="PreparationIndex" Margin="0,26,0,0">
+       
+       <ListBox x:Name="PreparationLinks" Style="{StaticResource IndexList}" SelectionChanged="PreparationLinkSelected" AutomationProperties.Name="준비 설정 목차" PreviewMouseLeftButtonUp="PreparationLinkClicked" PreviewKeyDown="PreparationLinkKeyDown">
+        <ListBoxItem Content="Unity 환경" Tag="EditorSection" />
+        <ListBoxItem Content="비교 대상" Tag="ReleaseSection" />
+        <ListBoxItem Content="실험 선택" Tag="ExperimentSection" />
+        <ListBoxItem Content="실행 조건" Tag="ExecutionSection" />
+       </ListBox>
+       <TextBlock Text="항목을 선택하면 해당 설정으로 이동합니다." TextWrapping="Wrap" Style="{StaticResource Hint}" Margin="8,20,8,0" />
+      </StackPanel>
+      <Grid x:Name="ProgressIndex" Margin="0,26,0,0" Visibility="Collapsed">
+       <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="*" />
+        <RowDefinition Height="Auto" />
+       </Grid.RowDefinitions>
+       <TextBlock Text="시행 찾기" Style="{StaticResource IndexCaption}" />
+       <TextBox Height="36" MinHeight="36" x:Name="LiveSearch" Grid.Row="1" Margin="0,0,0,8" TextChanged="LiveFilterChanged" ToolTip="시행 번호·버전·실험 검색" AutomationProperties.Name="진행 시행 검색" />
+       <ComboBox x:Name="LiveFilter" Grid.Row="2" Margin="0,0,0,8" SelectedIndex="0" SelectionChanged="LiveFilterChanged" AutomationProperties.Name="진행 시행 상태 필터">
+        <ComboBoxItem Content="전체 시행" Tag="" />
+        <ComboBoxItem Content="진행 중" Tag="running" />
+        <ComboBoxItem Content="실패·정리 실패" Tag="failed" />
+       </ComboBox>
+       <ListBox x:Name="LiveTrialIndex" Grid.Row="3" Style="{StaticResource IndexList}" ItemTemplate="{StaticResource LiveIndexTemplate}" SelectionChanged="LiveTrialSelected" AutomationProperties.Name="진행 시행 목록" />
+       <StackPanel Grid.Row="4">
+        <TextBlock x:Name="LiveScope" Text="시작하면 시행 목록이 표시됩니다." TextWrapping="Wrap" Style="{StaticResource Hint}" FontSize="11" />
+        <Button x:Name="FollowTrialButton" Content="현재 시행으로" Click="FollowTrialClicked" Style="{StaticResource QuietButton}" IsEnabled="False" />
+       </StackPanel>
+      </Grid>
+      <Grid x:Name="ResultIndex" Margin="0,26,0,0" Visibility="Collapsed" SizeChanged="ResultIndexSizeChanged">
+       <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="*" />
+        <RowDefinition Height="Auto" />
+       </Grid.RowDefinitions>
+       <ScrollViewer x:Name="ResultIndexTools" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="440">
+        <StackPanel>
+         <Button x:Name="OverviewButton" Content="전체 결과" Click="OverviewClicked" IsEnabled="False" HorizontalContentAlignment="Left" Style="{StaticResource QuietButton}" Margin="0,0,0,8" />
+
+         <StackPanel>
+          <TextBlock Text="실험" Style="{StaticResource IndexCaption}" />
+          <ListBox x:Name="ChartExperiment" Style="{StaticResource IndexList}" SelectionChanged="ChartExperimentChanged" AutomationProperties.Name="결과 실험 선택">
+           <ListBox.ItemTemplate>
+            <DataTemplate>
+             <TextBlock Text="{Binding Converter={StaticResource ExperimentLabel}}" TextWrapping="Wrap" />
+            </DataTemplate>
+           </ListBox.ItemTemplate>
+          </ListBox>
+         </StackPanel>
+         <StackPanel Margin="0,10,0,8">
+          <TextBlock Text="조건" Style="{StaticResource IndexCaption}" />
+          <ListBox x:Name="ChartCondition" Style="{StaticResource ConditionIndexList}" SelectionChanged="ChartSelectionChanged" PreviewMouseLeftButtonUp="ConditionIndexClicked" PreviewKeyDown="ConditionIndexKeyDown" AutomationProperties.Name="그래프 실험 조건">
+           <ListBox.ItemTemplate>
+            <DataTemplate>
+             <TextBlock Text="{Binding Condition}" TextWrapping="Wrap" />
+            </DataTemplate>
+           </ListBox.ItemTemplate>
+          </ListBox>
+         </StackPanel>
+         <Expander x:Name="TrialFiltersExpander" Header="버전·상태 필터" Margin="0,3,0,3">
+          <StackPanel Margin="0,6,0,8">
+           <ComboBox Visibility="Collapsed" x:Name="ExperimentFilter" MinWidth="110" MinHeight="34" Margin="0,0,0,6" SelectionChanged="TrialFilterChanged" AutomationProperties.Name="실험 필터" />
+           <ComboBox x:Name="ReleaseFilter" MinWidth="0" MinHeight="34" Margin="0,0,0,6" SelectionChanged="TrialFilterChanged" AutomationProperties.Name="버전 필터" />
+           <ComboBox x:Name="StatusFilter" MinWidth="0" MinHeight="34" Margin="0,0,0,6" SelectionChanged="TrialFilterChanged" AutomationProperties.Name="상태 필터">
+            <ComboBoxItem Content="전체 상태" Tag="" />
+            <ComboBoxItem Content="실패" Tag="failed" />
+            <ComboBoxItem Content="중단" Tag="cancelled" />
+            <ComboBoxItem Content="정리 실패" Tag="cleanup-failed" />
+            <ComboBoxItem Content="미수행" Tag="not-run" />
+            <ComboBoxItem Content="통계 제외" Tag="excluded" />
+            <ComboBoxItem Content="성공" Tag="success" />
+           </ComboBox>
+           <Button x:Name="ClearTrialFiltersButton" Content="필터 초기화" Click="ClearFiltersClicked" Margin="0,0,0,6" IsEnabled="False" Style="{StaticResource QuietButton}" ToolTip="시행 목록의 필터만 해제합니다. 위의 집계와 벤치 설정은 유지합니다." />
+          </StackPanel>
+         </Expander>
+        </StackPanel>
+       </ScrollViewer>
+       <ListBox x:Name="TrialIndex" Grid.Row="2" Margin="0,6,0,0" Style="{StaticResource IndexList}" ItemTemplate="{StaticResource TrialIndexTemplate}" SelectionChanged="TrialIndexSelected" AutomationProperties.Name="결과 시행 번호 목록" />
+       <TextBlock x:Name="TrialScope" Grid.Row="3" Text="기록을 선택하세요." TextWrapping="Wrap" Style="{StaticResource Hint}" Margin="4,8,0,0" FontSize="11" />
+       <StackPanel Grid.Row="1" Margin="0,10,0,4">
+        <TextBlock Text="개별 시행" Style="{StaticResource IndexCaption}" />
+        <TextBlock x:Name="SelectedConditionCaption" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,0,0,5" />
+        <Grid>
+         <TextBox Height="36" MinHeight="36" x:Name="TrialSearch" TextChanged="TrialSearchChanged" ToolTip="원래 시행 번호·버전·상태 검색" AutomationProperties.Name="결과 시행 검색" />
+         <TextBlock Text="번호·버전·상태 검색" Margin="10,0" Foreground="{DynamicResource Muted}" IsHitTestVisible="False" VerticalAlignment="Center" FontSize="12">
+          <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding Text, ElementName=TrialSearch}" Value=""><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+         </TextBlock>
+        </Grid>
+       </StackPanel>
+      </Grid>
+     </Grid>
+    </DockPanel>
+   </Border>
+   <Border Grid.Column="1" Margin="0" Background="{DynamicResource Workspace}" CornerRadius="0" BorderBrush="{DynamicResource Line}" BorderThickness="0"><Grid>
+    <TabControl x:Name="Tabs" Style="{StaticResource BenchTabs}" ItemContainerStyle="{StaticResource BenchTab}" SelectionChanged="WorkflowChanged" AutomationProperties.Name="벤치 작업 단계">
+     <TabItem Header="준비" ToolTip="Alt+1 · 실험 준비">
+      <DockPanel>
+       <Border motion:AshaSurface.Edge="Top" DockPanel.Dock="Bottom" Background="{DynamicResource Paper}" BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0" Padding="0,12">
+        <DockPanel>
+         <Button x:Name="StartButton" DockPanel.Dock="Right" Content="벤치 시작" Click="RunClicked" Style="{StaticResource SolidAction}" IsEnabled="False" Margin="12,0,0,0" AutomationProperties.AutomationId="LocalBenchmarkStart" />
+         <Button x:Name="ResolvePreparationButton" DockPanel.Dock="Right" Content="확인할 설정으로" Click="ResolvePreparationClicked" Style="{StaticResource QuietButton}" Margin="12,0,0,0" Visibility="Collapsed" />
+         <StackPanel VerticalAlignment="Center">
+          <TextBlock x:Name="PlanSummary" Text="실험 준비" FontWeight="SemiBold" />
+          <TextBlock x:Name="PlanHint" Text="Unity와 비교할 버전을 선택하세요." Foreground="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,3,0,0" />
+         </StackPanel>
+        </DockPanel>
+       </Border>
+       <ScrollViewer x:Name="PreparationScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,12,0">
+        <StackPanel x:Name="PreparationForm">
+         <StackPanel Margin="0,24,0,12">
+          <TextBlock Text="새 벤치 준비" Style="{StaticResource PageTitle}" />
+          <TextBlock Text="대상과 작업을 선택하면, 환경 준비부터 결과 저장까지 이어집니다." Style="{StaticResource Hint}" />
+         </StackPanel>
+         <Grid x:Name="PreparationColumns">
+          <Grid.ColumnDefinitions>
+           <ColumnDefinition Width="*" />
+           <ColumnDefinition x:Name="PreparationSecondColumn" Width="*" />
+          </Grid.ColumnDefinitions>
+          <Grid.RowDefinitions>
+           <RowDefinition Height="Auto" />
+           <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+          <StackPanel x:Name="PreparationMain">
+           <Border Style="{StaticResource Card}">
+            <StackPanel x:Name="EditorSection">
+             <DockPanel>
+              <TextBlock Text="Unity 환경" Style="{StaticResource Heading}" />
+             </DockPanel>
+             <TextBlock x:Name="EditorStatus" Text="설치된 Unity를 찾고 있습니다." Style="{StaticResource Hint}" />
+             <ComboBox x:Name="EditorList" DisplayMemberPath="Label" ToolTip="{Binding SelectedItem.Path, RelativeSource={RelativeSource Self}}" SelectionChanged="PreparationChanged" AutomationProperties.Name="실험에 사용할 Unity" />
+             <WrapPanel Margin="0,10,0,0">
+              <Button Content="다시 찾기" Click="FindEditorsClicked" Style="{StaticResource QuietButton}" Margin="0,0,8,0" />
+              <Button Content="직접 선택…" Click="BrowseEditorClicked" Style="{StaticResource QuietButton}" />
+             </WrapPanel>
+             <Expander Header="실험 환경과 분리 범위">
+              <TextBlock Style="{StaticResource Hint}" Text="설치·활성화된 Unity를 사용합니다. 매번 프로젝트·임시 파일·패키지 캐시와 프로세스를 새로 만들고 결과를 저장한 뒤 정리합니다.&#xA;Windows 설정·공용 서비스·시스템 캐시는 공유합니다. 첫 호출은 Unity 준비 후 첫 명령이며 PC 전체의 캐시가 비어 있다는 뜻은 아닙니다." />
+             </Expander>
+            </StackPanel>
+           </Border>
+           <Border Style="{StaticResource Card}">
+            <StackPanel x:Name="ReleaseSection">
+             <DockPanel>
+             <TextBlock Text="비교 대상" Style="{StaticResource Heading}" />
+             </DockPanel>
+             <TextBlock x:Name="ReleaseHint" Text="비교할 대상을 선택하세요. 필요한 파일은 시작할 때 준비합니다." Style="{StaticResource Hint}" />
+             <ScrollViewer MaxHeight="210" PreviewMouseWheel="NestedScrollWheel" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+              <StackPanel x:Name="ReleaseList" />
+             </ScrollViewer>
+             <CheckBox x:Name="IncludeOfficial" Style="{StaticResource TargetChoice}" Checked="OfficialSelectionChanged" Unchecked="OfficialSelectionChanged" AutomationProperties.Name="공식 Unity CLI와 Pipeline 함께 비교">
+              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+               <StackPanel Margin="0,0,12,0"><TextBlock Text="Unity CLI + Pipeline" FontWeight="SemiBold" TextWrapping="Wrap" /><TextBlock Text="Unity 공식 도구" FontSize="12" Foreground="{DynamicResource Muted}" Margin="0,3,0,0" /></StackPanel>
+               <TextBlock x:Name="OfficialRowNote" Grid.Column="1" Text="Unity 6 필요" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource Muted}" />
+              </Grid>
+             </CheckBox>
+             <StackPanel x:Name="OfficialSection" Visibility="Collapsed" Margin="28,0,0,8">
+              <TextBlock x:Name="OfficialStatus" Style="{StaticResource Hint}" Text="Unity 6 사용 · 버전과 파일은 벤치 시작 시 자동으로 준비합니다." />
+              <Expander x:Name="OfficialVersionsExpander" Header="공식 도구 버전 지정 (선택)">
+               <StackPanel>
+                <TextBlock Text="비워 두면 실행 시 최신 버전을 확인합니다. 이전 결과의 ‘설정 재사용’은 측정했던 버전을 그대로 불러옵니다." Style="{StaticResource Hint}" />
+                <WrapPanel>
+                 <StackPanel Width="200" Margin="0,0,12,8">
+                  <TextBlock Text="Unity CLI 버전" />
+                  <TextBox x:Name="OfficialCliVersion" Margin="0,5,0,0" ToolTip="비우면 자동 · 예: 1.0.0-beta.10" AutomationProperties.Name="공식 Unity CLI 버전 · 비우면 자동" />
+                 </StackPanel>
+                 <StackPanel Width="200" Margin="0,0,0,8">
+                  <TextBlock Text="Pipeline 버전" />
+                  <TextBox x:Name="OfficialPipelineVersion" Margin="0,5,0,0" ToolTip="비우면 자동 · 예: 0.7.0-exp.1" AutomationProperties.Name="Pipeline 버전 · 비우면 자동" />
+                 </StackPanel>
+                </WrapPanel>
+               </StackPanel>
+              </Expander>
+             </StackPanel>
+             <CheckBox x:Name="IncludeGo" Style="{StaticResource TargetChoice}" Checked="OfficialSelectionChanged" Unchecked="OfficialSelectionChanged" AutomationProperties.Name="Go unity-cli 비공식 함께 비교">
+              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+               <StackPanel Margin="0,0,12,0"><TextBlock Text="Go unity-cli" FontWeight="SemiBold" /><TextBlock x:Name="GoVersionCaption" Text="비공식 도구 / v0.4.1" FontSize="12" Foreground="{DynamicResource Muted}" Margin="0,3,0,0" /></StackPanel>
+               <TextBlock x:Name="GoRowNote" Grid.Column="1" Text="Unity 6 필요" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource Muted}" />
+              </Grid>
+             </CheckBox>
+             <StackPanel x:Name="GoSection" Visibility="Collapsed" Margin="28,0,0,8">
+              <Expander Header="Go 버전과 설치 방식"><StackPanel>
+              <TextBlock Text="youngwoocho02/unity-cli · Unity 6 사용 · CLI와 Connector를 임시 설치하고 종료 후 정리합니다." Style="{StaticResource Hint}" />
+              <StackPanel Orientation="Horizontal" Margin="0,4,0,8">
+               <TextBlock Text="Go 버전" VerticalAlignment="Center" Margin="0,0,12,0" />
+               <TextBox x:Name="GoVersion" Width="160" Text="0.4.1" ToolTip="기본 검증 대상: 0.4.1 · CLI와 같은 태그의 Connector 사용" AutomationProperties.Name="Go unity-cli 버전" />
+              </StackPanel>
+              </StackPanel></Expander>
+             </StackPanel>
+             <WrapPanel Margin="0,8,0,0">
+              <Button Content="릴리스 새로 확인" Click="ReleasesClicked" Style="{StaticResource QuietButton}" Margin="0,0,8,0" />
+              <Button Content="파일 미리 준비" Click="PrepareReleasesClicked" Style="{StaticResource QuietButton}" ToolTip="실행 전 다운로드만 미리 진행합니다. 벤치 시작 시에도 자동으로 준비됩니다." />
+             </WrapPanel>
+             <StackPanel Margin="0,12,0,0">
+              <TextBlock Text="비교 기준" Margin="0,0,0,5" />
+              <ComboBox x:Name="BaselineList" MinWidth="170" SelectionChanged="BaselineChanged" AutomationProperties.Name="기준 버전 선택" />
+             </StackPanel>
+             <TextBlock x:Name="ReleaseStatus" Text="아직 조회한 릴리스가 없습니다." Style="{StaticResource Hint}" />
+            </StackPanel>
+           </Border>
+          </StackPanel>
+          <StackPanel x:Name="PreparationOptions" Grid.Column="1" Margin="36,0,0,0">
+           <Border Style="{StaticResource Card}">
+            <StackPanel x:Name="ExperimentSection">
+             <DockPanel>
+              <TextBlock Text="측정할 작업" Style="{StaticResource Heading}" />
+             </DockPanel>
+             <TextBlock Text="첫 시험은 F01 기본값으로 시작할 수 있습니다." Style="{StaticResource Hint}" />
+             <CheckBox x:Name="F01" IsChecked="True" Margin="0,0,0,4">
+              <TextBlock Text="F01   작은 요청 · 첫 명령 / 반복 명령 평균" TextWrapping="Wrap" />
+             </CheckBox>
+             <CheckBox x:Name="F02" Margin="0,0,0,4">
+              <TextBlock Text="F02   오브젝트 1,000개 · 1 / 10 / 100회로 분할" TextWrapping="Wrap" />
+             </CheckBox>
+             <CheckBox x:Name="F03" Margin="0,0,0,4">
+              <TextBlock Text="F03   응답 크기 · 1 KiB / 64 KiB / 1 MiB" TextWrapping="Wrap" />
+             </CheckBox>
+             <CheckBox x:Name="F04" Margin="0,0,0,4">
+              <TextBlock Text="F04   exec · 동일 C#의 첫 명령 / 반복 명령 평균" TextWrapping="Wrap" />
+             </CheckBox>
+             <CheckBox x:Name="S01" Margin="0,0,0,12">
+              <TextBlock Text="S01   안정성 · 고부하·고밀도 명령 요청" TextWrapping="Wrap" />
+             </CheckBox>
+             <WrapPanel x:Name="ExecutionSection" Margin="0,18,0,0">
+              <StackPanel Width="140" Margin="0,0,12,8">
+               <TextBlock Text="새 프로젝트 실험 횟수" />
+               <DockPanel Margin="0,5,0,0">
+                <TextBox x:Name="Repeats" Text="2" Margin="0" />
+               </DockPanel>
+               <TextBlock x:Name="RepeatsError" TextWrapping="Wrap" FontSize="10" Foreground="#9E344D" />
+              </StackPanel>
+              <StackPanel Width="140" Margin="0,0,12,8">
+               <TextBlock Text="제외할 사전 실행" />
+               <DockPanel Margin="0,5,0,0">
+                <TextBox x:Name="Warmups" Text="1" Margin="0" />
+               </DockPanel>
+               <TextBlock x:Name="WarmupsError" TextWrapping="Wrap" FontSize="10" Foreground="#9E344D" />
+              </StackPanel>
+              <StackPanel Width="140" Margin="0,0,12,8">
+               <TextBlock Text="실험당 측정 명령" />
+               <DockPanel Margin="0,5,0,0">
+                <TextBox x:Name="Calls" Text="3" Margin="0" />
+               </DockPanel>
+               <TextBlock x:Name="CallsError" TextWrapping="Wrap" FontSize="10" Foreground="#9E344D" />
+              </StackPanel>
+             </WrapPanel>
+             <TextBlock x:Name="MeasurementPlan" Style="{StaticResource Hint}" />
+             <WrapPanel Margin="0,8,0,4">
+              <Button Content="빠른 확인 설정" Click="QuickPilotClicked" Style="{StaticResource QuietButton}" Margin="0,0,8,6" />
+              <Button Content="반복 설계용 예비 설정" Click="StatisticalPilotClicked" Style="{StaticResource QuietButton}" Margin="0,0,0,6" />
+             </WrapPanel>
+             <TextBlock Text="예비 설정: 새 프로젝트 20회 · 사전 실행 5회 · 측정 20회. 자동 실행하지 않습니다. 준비 시간이 커질 수 있으며, 사전 실행의 충분성은 호출 순서로 확인하세요." Style="{StaticResource Hint}" FontSize="12" />
+             <Expander Header="부하 설정" IsEnabled="{Binding IsChecked, ElementName=S01}">
+              <StackPanel Margin="0,8,0,10">
+               <TextBlock Text="같은 Unity에 여러 CLI 요청을 동시에 전달합니다. Unity 내부의 병렬 실행을 뜻하지 않습니다." Style="{StaticResource Hint}" />
+               <WrapPanel>
+                <StackPanel Width="140" Margin="0,0,12,8">
+                 <TextBlock Text="명령당 요청 수" />
+                 <DockPanel Margin="0,5,0,0">
+                  <TextBox x:Name="StressRequests" Text="32" Margin="0" />
+                 </DockPanel>
+                 <TextBlock x:Name="StressRequestsError" TextWrapping="Wrap" FontSize="10" Foreground="#9E344D" />
+                </StackPanel>
+                <StackPanel Width="140">
+                 <TextBlock Text="최대 동시 요청" />
+                 <DockPanel Margin="0,5,0,0">
+                  <TextBox x:Name="StressConcurrency" Text="4" Margin="0" />
+                 </DockPanel>
+                 <TextBlock x:Name="StressConcurrencyError" TextWrapping="Wrap" FontSize="10" Foreground="#9E344D" />
+                </StackPanel>
+               </WrapPanel>
+               <TextBlock Text="기본: 작은 요청 · 1 MiB 응답 · 오브젝트 생성·제거 · exec · Editor 상태. 각 시나리오는 새 프로젝트에서 실행합니다." Style="{StaticResource Hint}" />
+               <Expander Header="다른 UnityBridge 명령 지정">
+                <StackPanel>
+                 <TextBlock Text="명령 이름·입력값·기대 결과를 JSON 배열로 지정합니다. 비우면 기본 묶음을 사용합니다. 예시: docs/STABILITY.md" Style="{StaticResource Hint}" />
+                 <TextBox x:Name="StressScenarios" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="100" MaxHeight="210" AutomationProperties.Name="명령 부하 시나리오 JSON" />
+                </StackPanel>
+               </Expander>
+              </StackPanel>
+             </Expander>
+             <Expander Header="시간 제한·실행 순서">
+              <WrapPanel Margin="0,10,0,0">
+               <StackPanel Width="140" Margin="0,0,12,8">
+                <TextBlock Text="CLI 제한(초)" />
+                <DockPanel Margin="0,5,0,0">
+                 <TextBox x:Name="Timeout" Text="180" Margin="0" />
+                </DockPanel>
+                <TextBlock x:Name="TimeoutError" TextWrapping="Wrap" FontSize="10" Foreground="#9E344D" />
+               </StackPanel>
+               <StackPanel Width="140" Margin="0,0,12,8">
+                <TextBlock Text="Unity 준비(초)" />
+                <DockPanel Margin="0,5,0,0">
+                 <TextBox x:Name="PrepareTimeout" Text="600" Margin="0" />
+                </DockPanel>
+                <TextBlock x:Name="PrepareTimeoutError" TextWrapping="Wrap" FontSize="10" Foreground="#9E344D" />
+               </StackPanel>
+               <StackPanel Width="140" Margin="0,0,12,8">
+                <TextBlock Text="순서 시드" />
+                <DockPanel Margin="0,5,0,0">
+                 <TextBox x:Name="Seed" Text="20260915" Margin="0" />
+                </DockPanel>
+                <TextBlock x:Name="SeedError" TextWrapping="Wrap" FontSize="10" Foreground="#9E344D" />
+               </StackPanel>
+              </WrapPanel>
+             </Expander>
+             <TextBlock Text="예비 시험(Pilot) · 반복 호출을 독립 시행으로 세지 않으며 작은 표본으로 승자를 판정하지 않습니다." Style="{StaticResource Hint}" />
+             <Button x:Name="ResetButton" Content="벤치 설정 초기화" Click="ResetClicked" Style="{StaticResource QuietButton}" HorizontalAlignment="Left" Margin="0,6,0,0" />
+            </StackPanel>
+           </Border>
+          </StackPanel>
+         </Grid>
+        </StackPanel>
+       </ScrollViewer>
+      </DockPanel>
+     </TabItem>
+     <TabItem Header="진행" ToolTip="Alt+2 · 실행 상태">
+      <DockPanel>
+       <WrapPanel DockPanel.Dock="Bottom" Margin="0,12">
+        <Button x:Name="CancelButton" Content="중단하고 정리" Click="CancelClicked" Visibility="Collapsed" Margin="0,0,8,0" />
+        <Button x:Name="ViewResultButton" Content="결과 확인" Click="ViewResultClicked" Style="{StaticResource SolidAction}" Visibility="Collapsed" />
+       </WrapPanel>
+       <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="0,24,8,12">
+         <TextBlock x:Name="ProgressTitle" Text="실행을 기다리고 있어요" FontSize="28" FontWeight="SemiBold" />
+         <TextBlock x:Name="ProgressDetail" Text="준비 탭에서 Unity와 버전을 선택하고 벤치를 시작하세요." Style="{StaticResource Hint}" Margin="0,10,0,24" />
+         <UniformGrid Rows="1" Margin="0,0,0,24">
+          <Border x:Name="StagePrepare" BorderBrush="{DynamicResource Line}" BorderThickness="0,2,0,0" Padding="0,10,0,0" Margin="0,0,12,0">
+           <TextBlock Text="환경 준비" />
+          </Border>
+          <Border x:Name="StageUnity" BorderBrush="{DynamicResource Line}" BorderThickness="0,2,0,0" Padding="0,10,0,0" Margin="0,0,12,0">
+           <TextBlock Text="Unity 준비" />
+          </Border>
+          <Border x:Name="StageMeasure" BorderBrush="{DynamicResource Line}" BorderThickness="0,2,0,0" Padding="0,10,0,0" Margin="0,0,12,0">
+           <TextBlock Text="명령 측정" />
+          </Border>
+          <Border x:Name="StageCleanup" BorderBrush="{DynamicResource Line}" BorderThickness="0,2,0,0" Padding="0,10,0,0">
+           <TextBlock Text="저장·정리" />
+          </Border>
+         </UniformGrid>
+         <DockPanel>
+          <Button x:Name="LiveFailuresButton" DockPanel.Dock="Right" Content="실패 0회" Click="LiveFailuresClicked" Style="{StaticResource QuietButton}" IsEnabled="False" />
+          <TextBlock x:Name="ProgressCount" Text="0 / 0" FontFamily="Segoe UI" FontSize="32" Foreground="{DynamicResource AccentInk}" />
+         </DockPanel>
+         <TextBlock Text="종료한 시행 / 계획한 시행 · 성공 여부는 결과에서 확인합니다." Style="{StaticResource Hint}" />
+         <ProgressBar x:Name="Activity" Height="4" Margin="0,4,0,20" Foreground="{DynamicResource AccentInk}" Background="{DynamicResource Tint}" BorderThickness="0" />
+         <Border BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0" Padding="0,16" Margin="0,0,0,12">
+          <StackPanel>
+           <TextBlock Text="선택한 시행" FontWeight="SemiBold" />
+           <TextBox x:Name="LiveInspection" Text="좌측에서 시행을 선택하면 현재 상태와 완료된 결과를 확인할 수 있습니다." Margin="0,10,0,0" Padding="14" MinHeight="90" IsReadOnly="True" TextWrapping="Wrap" Background="{DynamicResource Tint}" BorderThickness="0" />
+          </StackPanel>
+         </Border>
+         <Border BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0" Padding="0,12,0,0">
+          <Expander x:Name="JournalExpander" Header="상세 실행 로그">
+           <TextBox x:Name="Journal" IsReadOnly="True" TextWrapping="Wrap" Height="260" VerticalScrollBarVisibility="Auto" Background="Transparent" BorderThickness="0" Padding="0,10" FontFamily="Consolas, Malgun Gothic" />
+          </Expander>
+         </Border>
+        </StackPanel>
+       </ScrollViewer>
+      </DockPanel>
+     </TabItem>
+     <TabItem Header="결과" ToolTip="Alt+3 · 저장된 결과">
+      <DockPanel>
+       <Border x:Name="ResultToolbar" DockPanel.Dock="Top" Padding="0,12,0,4">
+        <StackPanel>
+         <DockPanel>
+          <WrapPanel x:Name="ResultExportActions" DockPanel.Dock="Right" IsEnabled="False">
+           <Button x:Name="ReuseButton" Content="설정 재사용" Click="ReuseClicked" Style="{StaticResource QuietButton}" Margin="0,0,8,0" IsEnabled="False" />
+           <Button x:Name="ExportMenuButton" Content="내보내기" Click="ActionMenuClicked" PreviewKeyDown="ActionMenuKeyDown" MinHeight="36" AutomationProperties.Name="결과 내보내기">
+            <Button.ContextMenu>
+             <ContextMenu Style="{StaticResource ActionMenu}">
+              <MenuItem Header="비교 요약 TXT 열기" Click="SummaryTextClicked" />
+              <MenuItem Header="비교 요약 복사" Click="CopySummaryClicked" />
+              <Separator Style="{StaticResource ActionSeparator}" />
+              <MenuItem Header="분석 Excel 열기" Click="ExcelClicked" />
+              <MenuItem x:Name="ExportCurrentChart" Header="현재 그래프 SVG 저장…" Click="ExportChartClicked" />
+              <Separator Style="{StaticResource ActionSeparator}" />
+              <MenuItem Header="보고서 폴더 열기" Click="ResultsFolderClicked" />
+              <MenuItem Header="원본·로그 폴더 열기" Click="RawResultsFolderClicked" />
+             </ContextMenu>
+            </Button.ContextMenu>
+           </Button>
+          </WrapPanel>
+          <TextBlock x:Name="ResultContext" Text="저장된 결과" FontSize="12" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,16,0" />
+         </DockPanel>
+         <TextBlock x:Name="ResultStatus" Text="아직 결과가 없습니다. 준비 탭에서 첫 벤치를 시작하세요." TextWrapping="Wrap" Margin="0,12,0,0" />
+         <TextBlock x:Name="ReportStatus" TextWrapping="Wrap" Foreground="{DynamicResource Muted}">
+          <TextBlock.Style>
+           <Style TargetType="TextBlock">
+            <Style.Triggers>
+             <Trigger Property="Text" Value="">
+              <Setter Property="Visibility" Value="Collapsed" />
+             </Trigger>
+            </Style.Triggers>
+           </Style>
+          </TextBlock.Style>
+         </TextBlock>
+        </StackPanel>
+       </Border>
+       <StackPanel DockPanel.Dock="Top" Margin="0,8,0,0">
+        <DockPanel Margin="0,0,0,8">
+         <TextBlock x:Name="ResultHeading" motion:AshaSurface.Edge="Top" Text="실험 결과" FontSize="21" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center" />
+        </DockPanel>
+        <WrapPanel x:Name="ResultNavigation" Margin="0,4,0,8">
+         <RadioButton Content="조건별 시간" GroupName="ResultView" IsChecked="True" Checked="ResultViewChanged" Tag="0" Margin="0,0,4,0" Style="{StaticResource ResultMode}" />
+         <RadioButton Content="기준 버전 대비" GroupName="ResultView" Checked="ResultViewChanged" Tag="1" Margin="0,0,4,0" Style="{StaticResource ResultMode}" />
+         <RadioButton Content="시행 상세" GroupName="ResultView" Checked="ResultViewChanged" Tag="2" Style="{StaticResource ResultMode}" Margin="0,0,4,0" />
+        </WrapPanel>
+       </StackPanel>
+       <ScrollViewer x:Name="ResultDetailsScroll" SizeChanged="ResultViewportChanged" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel>
+         <StackPanel x:Name="OverviewView" Visibility="Collapsed" Margin="0,16,0,20">
+          <TextBlock x:Name="OverviewDescription" TextWrapping="Wrap" FontSize="14" FontWeight="SemiBold" />
+          <TextBlock x:Name="OverviewCounts" TextWrapping="Wrap" Foreground="{DynamicResource Muted}" Margin="0,8,0,16" />
+          <TextBlock Text="행을 선택해 세로 그래프와 시행 내역을 확인하세요." Foreground="{DynamicResource Muted}" Margin="0,0,0,10" />
+          <DataGrid x:Name="OverviewTable" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" CanUserSortColumns="False" CanUserReorderColumns="False" HeadersVisibility="Column" SelectionMode="Single" RowHeight="56" MaxHeight="460" PreviewMouseWheel="NestedScrollWheel" SelectionChanged="OverviewRowSelected" AutomationProperties.Name="전체 조건별 기준 대비 비교">
+           <DataGrid.Columns>
+            <DataGridTemplateColumn Header="실험 / 조건" Width="2*" MinWidth="185"><DataGridTemplateColumn.CellTemplate><DataTemplate><StackPanel Margin="8,5" VerticalAlignment="Center"><TextBlock Text="{Binding Experiment, Converter={StaticResource ExperimentLabel}}" FontWeight="SemiBold" /><TextBlock Text="{Binding Condition}" FontSize="12" Foreground="{DynamicResource Muted}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Condition}" Margin="0,3,0,0" /></StackPanel></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+            <DataGridTextColumn Header="비교 대상" Width="*" MinWidth="120" Binding="{Binding Candidate}" ElementStyle="{StaticResource ReportCellText}" />
+            <DataGridTextColumn Header="기준 평균" Width="100" Binding="{Binding BaselineMs, StringFormat=N2, TargetNullValue=—}" ElementStyle="{StaticResource NumberCell}" />
+            <DataGridTextColumn Header="대상 평균" Width="100" Binding="{Binding CandidateMs, StringFormat=N2, TargetNullValue=—}" ElementStyle="{StaticResource NumberCell}" />
+            <DataGridTextColumn Header="단위" Width="110" Binding="{Binding Unit}" ElementStyle="{StaticResource ReportCellText}" />
+            <DataGridTemplateColumn Header="기준 대비 / 감소율 95% 구간" Width="195"><DataGridTemplateColumn.CellTemplate><DataTemplate><StackPanel Margin="8,5" VerticalAlignment="Center" ToolTip="{Binding Inference}"><TextBlock Text="{Binding Change}" /><TextBlock Text="{Binding ConfidenceRange}" FontSize="12" Foreground="{DynamicResource Muted}" Margin="0,3,0,0" /></StackPanel></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+            <DataGridTextColumn Header="유효/계획 쌍" Width="100" Binding="{Binding Blocks}" ElementStyle="{StaticResource NumberCell}" />
+           </DataGrid.Columns>
+          </DataGrid>
+          <TextBlock x:Name="OverviewEmpty" Text="비교할 수 있는 조건이 없습니다. 좌측에서 실험과 시행 기록을 확인하세요." TextWrapping="Wrap" Margin="0,16,0,0" />
+          <TextBlock Text="두 대상 모두 유효한 같은 블록만 비교합니다. 5쌍 미만은 구간을 제공하지 않으며 감소율 구간이 0%를 포함하면 방향이 불확실합니다. 제외·미완료 상태는 상세에서 함께 확인하세요. 서로 다른 조건의 시간을 합쳐 순위를 정하지 않습니다." TextWrapping="Wrap" Foreground="{DynamicResource Muted}" Margin="0,12,0,0" />
+         </StackPanel>
+         <Border x:Name="TimeView" Style="{StaticResource Card}">
+          <StackPanel>
+           <StackPanel x:Name="ResultInsight" SizeChanged="ResultViewportChanged" Margin="0,0,0,12">
+            <TextBlock x:Name="InsightLabel" Text="선택 조건의 비교" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,6" />
+            <TextBlock x:Name="InsightValue" Text="결과를 기다리고 있습니다" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource AccentInk}" TextWrapping="Wrap" />
+            <TextBlock x:Name="InsightDetail" TextWrapping="Wrap" Foreground="{DynamicResource Muted}" Margin="0,6,0,0" FontSize="13" />
+            <DockPanel Margin="0,10,0,0">
+             <Button x:Name="InspectFailuresButton" DockPanel.Dock="Right" Content="제외된 시행 확인" Click="InspectFailuresClicked" Style="{StaticResource QuietButton}" />
+             <TextBlock x:Name="ConditionCoverage" FontSize="12" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" TextWrapping="Wrap" />
+            </DockPanel>
+           </StackPanel>
+           <DockPanel>
+            <ComboBox DockPanel.Dock="Right" x:Name="ChartMetric" Width="155" SelectionChanged="ChartSelectionChanged" AutomationProperties.Name="그래프 지표">
+             <ComboBoxItem Content="평균 완료 시간" IsSelected="True" />
+             <ComboBoxItem Content="유효 완료율" />
+            </ComboBox>
+            <TextBlock x:Name="ChartTitle" Text="조건별 시간" Style="{StaticResource Heading}" VerticalAlignment="Center" TextWrapping="Wrap" FontSize="13" />
+           </DockPanel>
+           <TextBlock x:Name="ChartBasis" Text="그래프: 대상별 전체 유효 시행의 평균 / 위 비교와 포함 범위가 다를 수 있습니다." Foreground="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" />
+           <StackPanel Margin="0,8,0,12">
+            <ScrollViewer PreviewMouseWheel="NestedScrollWheel" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+             <local:SpeedChartView x:Name="ResultChart" Height="65" Margin="0,8,0,0" AutomationProperties.Name="버전별 세로 그래프 · 선택하면 시행 상세" />
+            </ScrollViewer>
+           </StackPanel>
+           <Expander Header="시간 수치 · 평균·중앙값·유효 횟수">
+            <StackPanel>
+             <TextBlock Text="행을 선택하면 해당 버전의 시행 상세로 이동합니다. 제외에는 실패·중단·미수행이 포함됩니다." Style="{StaticResource Hint}" />
+             <DataGrid x:Name="Summary" PreviewMouseWheel="NestedScrollWheel" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column" SelectionMode="Single" SelectionChanged="SummarySelected">
+              <DataGrid.Columns>
+               <DataGridTextColumn ElementStyle="{StaticResource ReportCellText}" Header="버전" Binding="{Binding Release}" />
+               <DataGridTextColumn ElementStyle="{StaticResource ReportCellText}" Header="계획" Binding="{Binding Planned}" />
+               <DataGridTextColumn ElementStyle="{StaticResource ReportCellText}" Header="유효" Binding="{Binding Valid}" />
+               <DataGridTextColumn ElementStyle="{StaticResource ReportCellText}" Header="제외" Binding="{Binding Excluded}" />
+               <DataGridTextColumn ElementStyle="{StaticResource NumberCell}" Header="평균(ms)" Binding="{Binding Mean, StringFormat=N2, TargetNullValue=—}" />
+               <DataGridTextColumn ElementStyle="{StaticResource NumberCell}" Header="중앙값(ms)" Binding="{Binding Median, StringFormat=N2, TargetNullValue=—}" />
+               <DataGridTextColumn ElementStyle="{StaticResource ReportCellText}" Header="평균 95% 구간(ms)" Binding="{Binding ConfidenceRange}" />
+              </DataGrid.Columns>
+             </DataGrid>
+            </StackPanel>
+           </Expander>
+           <Expander Header="측정 조건과 해석" Margin="0,6,0,0">
+            <StackPanel>
+             <TextBlock Text="위 평균 차이는 양쪽 모두 유효한 같은 블록을 비교한 관찰값입니다. 그래프는 각 대상의 전체 유효 시행 평균이므로 서로 다를 수 있습니다. 한 블록은 반복 간 변동을 확인할 수 없습니다." Style="{StaticResource Hint}" />
+             <TextBlock x:Name="ConditionProtocol" Style="{StaticResource Hint}" Margin="0,0,0,4" FontSize="11" LineHeight="17" />
+             <TextBlock x:Name="ChartHint" Style="{StaticResource Hint}" />
+            </StackPanel>
+           </Expander>
+          </StackPanel>
+         </Border>
+         <Border x:Name="PairView" Visibility="Collapsed" Style="{StaticResource Card}">
+          <StackPanel>
+           <TextBlock Text="기준 버전 대비 비교" Style="{StaticResource Heading}" />
+           <TextBlock x:Name="ConditionMemo" TextWrapping="Wrap" FontSize="17" LineHeight="28" Margin="0,10,0,10" />
+           <TextBlock x:Name="Comparison" Text="두 버전이 모두 유효한 같은 블록만 비교합니다." Style="{StaticResource Hint}" />
+           <DataGrid x:Name="PairSummary" PreviewMouseWheel="NestedScrollWheel" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column">
+            <DataGrid.Columns>
+             <DataGridTextColumn ElementStyle="{StaticResource ReportCellText}" Header="후보" Binding="{Binding Candidate}" />
+             <DataGridTextColumn ElementStyle="{StaticResource ReportCellText}" Header="변화" Binding="{Binding Change}" />
+             <DataGridTextColumn ElementStyle="{StaticResource ReportCellText}" Header="유효 블록" Binding="{Binding Blocks}" />
+             <DataGridTextColumn ElementStyle="{StaticResource NumberCell}" Header="기준(ms)" Binding="{Binding BaselineMs, StringFormat=N2, TargetNullValue=—}" />
+             <DataGridTextColumn ElementStyle="{StaticResource NumberCell}" Header="후보(ms)" Binding="{Binding CandidateMs, StringFormat=N2, TargetNullValue=—}" />
+             <DataGridTextColumn ElementStyle="{StaticResource ReportCellText}" Header="감소율 95% 구간" Binding="{Binding ConfidenceRange}" />
+            </DataGrid.Columns>
+           </DataGrid>
+           <Expander x:Name="StatisticsExpander" Header="측정 신뢰도와 다음 실험" Margin="0,16,0,0">
+            <StackPanel>
+             <TextBlock x:Name="ReplicationSummary" TextWrapping="Wrap" LineHeight="22" Margin="0,8,0,12" />
+             <TextBlock Text="목표는 시간비 신뢰구간의 상대 반폭 5%입니다. 현재 호출 수와 환경을 유지한다는 추정이며, 실제 정밀도를 보장하지 않습니다. 호출 수를 변경하면 새 예비 측정이 필요합니다." Style="{StaticResource Hint}" />
+             <Button x:Name="FollowupPlanButton" Content="이 기록으로 다음 실험 준비" Click="FollowupPlanClicked" HorizontalAlignment="Left" Style="{StaticResource QuietButton}" Margin="0,8,0,10" IsEnabled="False" />
+             <TextBlock x:Name="FollowupStatus" Text="기록의 전체 조건·버전을 복원하고 가장 큰 권장 반복 수를 적용합니다. 모든 비교가 완료·유효해야 하며, 벤치는 직접 시작합니다." Style="{StaticResource Hint}" />
+             <TextBlock x:Name="ReplicationDetail" TextWrapping="Wrap" LineHeight="21" Margin="0,10,0,0" FontSize="12" Foreground="{DynamicResource Muted}" />
+             <TextBlock Text="새 프로젝트 시행 순서" FontWeight="SemiBold" Margin="0,18,0,8" />
+             <ComboBox x:Name="TrialOrderRelease" MinWidth="180" HorizontalAlignment="Left" SelectionChanged="TrialOrderReleaseChanged" AutomationProperties.Name="시행 순서를 볼 버전" />
+             <local:SpeedSequenceView x:Name="TrialOrderSequence" Height="170" Margin="0,8,0,4" AutomationProperties.Name="새 프로젝트 시행 순서별 대표시간" />
+             <TextBlock Text="각 버전의 실행 순서로 표시합니다. 빈 구간은 제외·미수행이며 0ms가 아닙니다. 상승·하락 추세를 확인하세요. 20회 미만은 자동 순서 진단을 하지 않으며, 신호가 없더라도 독립성을 보장하지 않습니다." Style="{StaticResource Hint}" />
+            </StackPanel>
+           </Expander>
+          </StackPanel>
+         </Border>
+         <Border x:Name="TrialView" Visibility="Collapsed" Style="{StaticResource Card}">
+          <StackPanel>
+           <DockPanel>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"><Button x:Name="TrialPreviousButton" Content="이전 시행" Click="TrialPreviousClicked" Style="{StaticResource QuietButton}" Margin="0,0,6,0" /><Button x:Name="TrialNextButton" Content="다음 시행" Click="TrialNextClicked" Style="{StaticResource QuietButton}" /></StackPanel>
+            <Button Content="조건 그래프로 돌아가기" HorizontalAlignment="Left" Click="BackToConditionClicked" Style="{StaticResource QuietButton}" />
+           </DockPanel>
+           <StackPanel Margin="0,8,0,14">
+            <TextBlock x:Name="TrialHeadline" Text="시행을 선택하세요" FontSize="26" FontWeight="SemiBold" TextWrapping="Wrap" />
+            <TextBlock x:Name="TrialVerdict" Foreground="{DynamicResource Muted}" Margin="0,8,0,18" TextWrapping="Wrap" />
+            <TextBlock x:Name="TrialTime" FontSize="32" FontWeight="SemiBold" />
+            <TextBlock x:Name="TrialReason" FontSize="14" TextWrapping="Wrap" Margin="0,12,0,0" />
+           </StackPanel>
+           <Expander Header="안정성 요약 · 성공률과 오류 종류">
+            <StackPanel Margin="0,10,0,12">
+             <TextBlock Text="유효 완료 / 평가 대상 시행입니다. 환경 준비·벤치 호환성 오류, 사용자 중단·미수행은 분모에서 제외합니다. 정리 실패는 포함하며 별도 표시합니다." Style="{StaticResource Hint}" />
+             <DataGrid x:Name="StabilityTable" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" MaxHeight="340" PreviewMouseWheel="NestedScrollWheel">
+              <DataGrid.Columns>
+               <DataGridTextColumn ElementStyle="{StaticResource ReportCellText}" Header="버전" Binding="{Binding Release}" />
+               <DataGridTextColumn ElementStyle="{StaticResource ReportCellText}" Header="유효 완료" Binding="{Binding Completion}" />
+               <DataGridTextColumn ElementStyle="{StaticResource ReportCellText}" Header="호출 판정" Binding="{Binding CallCompletion}" />
+               <DataGridTextColumn ElementStyle="{StaticResource ReportCellText}" Header="시행 최소–최대(ms)" Binding="{Binding Range}" />
+               <DataGridTextColumn ElementStyle="{StaticResource NumberCell}" Header="시행 표준편차(ms)" Binding="{Binding StandardDeviationMs, StringFormat=N2, TargetNullValue=—}" />
+               <DataGridTextColumn ElementStyle="{StaticResource NumberCell}" Header="호출 P95(ms)" Binding="{Binding CallP95Ms, StringFormat=N2, TargetNullValue=—}" />
+               <DataGridTextColumn ElementStyle="{StaticResource NumberCell}" Header="부하 처리량(요청/초)" Binding="{Binding RequestsPerSecond, StringFormat=N2, TargetNullValue=—}" />
+               <DataGridTextColumn ElementStyle="{StaticResource ReportCellText}" Header="오류 구분(시행)" Binding="{Binding Failures}" />
+              </DataGrid.Columns>
+             </DataGrid>
+            </StackPanel>
+           </Expander>
+           <Expander x:Name="TrialTableExpander" Header="시행 표로 보기">
+            <DataGrid x:Name="Trials" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" MaxHeight="340" PreviewMouseWheel="NestedScrollWheel" HeadersVisibility="Column" SelectionMode="Single" SelectionChanged="TrialSelected">
+             <DataGrid.Columns>
+              <DataGridTextColumn ElementStyle="{StaticResource ReportCellText}" Header="#" Binding="{Binding Order}" />
+              <DataGridTextColumn ElementStyle="{StaticResource ReportCellText}" Header="블록" Binding="{Binding Block}" />
+              <DataGridTextColumn ElementStyle="{StaticResource ReportCellText}" Header="버전" Binding="{Binding Release}" />
+              <DataGridTextColumn ElementStyle="{StaticResource ReportCellText}" Header="상태" Binding="{Binding Status}" />
+              <DataGridTextColumn ElementStyle="{StaticResource NumberCell}" Header="대표시간(ms)" Binding="{Binding WorkMs, StringFormat=N2, TargetNullValue=—}" />
+              <DataGridTextColumn ElementStyle="{StaticResource ReportCellText}" Header="오류 구분" Binding="{Binding FailureCategory}" />
+              <DataGridTextColumn ElementStyle="{StaticResource ReportCellText}" Header="정리" Binding="{Binding Cleanup}" />
+             </DataGrid.Columns>
+            </DataGrid>
+           </Expander>
+           <Expander x:Name="SequenceExpander" Header="호출 순서 · 사전 실행과 측정의 변동" Margin="0,10,0,0">
+            <StackPanel>
+             <local:SpeedSequenceView x:Name="CallSequence" Height="190" Margin="0,8,0,4" AutomationProperties.Name="시행의 시간 순서 그래프 · 회색 사전 실행 · 보라색 측정" />
+             <TextBlock x:Name="SequenceDiagnosis" Style="{StaticResource Hint}" />
+            </StackPanel>
+           </Expander>
+           <WrapPanel Margin="0,12,0,4">
+            <TextBlock Text="선택한 시행" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0" />
+            <Button x:Name="TrialFolderButton" IsEnabled="False" Content="이 시행의 로그 열기" Click="TrialFolderClicked" Style="{StaticResource QuietButton}" />
+           </WrapPanel>
+           <Expander x:Name="TrialDiagnosticsExpander" Header="응답 검증·오류와 식별 정보" Margin="0,10,0,0">
+            <TextBox x:Name="TrialDetails" PreviewMouseWheel="NestedScrollWheel" IsReadOnly="True" TextWrapping="Wrap" MinHeight="160" FontSize="13" Padding="16" Background="{DynamicResource Tint}" BorderThickness="0" />
+           </Expander>
+          </StackPanel>
+         </Border>
+         <Expander Header="시험 요약 · 환경과 성공·실패 수" Margin="0,10,0,0">
+          <TextBox x:Name="ResultMemo" PreviewMouseWheel="NestedScrollWheel" IsReadOnly="True" TextWrapping="Wrap" Background="Transparent" BorderThickness="0" Padding="0,6,0,12" AutomationProperties.Name="결과 요약 메모" />
+         </Expander>
+        </StackPanel>
+       </ScrollViewer>
+      </DockPanel>
+     </TabItem>
+    </TabControl>
+    <Grid x:Name="HistoryPage" Visibility="Collapsed" Margin="32,22">
+ <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+ <DockPanel Margin="0,0,0,20"><Button DockPanel.Dock="Right" Content="작업으로 돌아가기" Click="WorkspaceBackClicked" Style="{StaticResource QuietButton}" /><StackPanel><TextBlock Text="실행 기록" Style="{StaticResource PageTitle}" /><TextBlock Text="결과를 다시 열고, 측정했던 조건으로 다음 실험을 준비하세요." Style="{StaticResource Hint}" /></StackPanel></DockPanel>
+ <DockPanel x:Name="HistorySearchRow" Grid.Row="1" Margin="0,0,0,16">
+  <Button x:Name="HistoryRefreshButton" DockPanel.Dock="Right" Content="새로고침" Click="HistoryClicked" Style="{StaticResource QuietButton}" Margin="12,0,0,0" IsEnabled="{Binding IsEnabled, ElementName=PreparationForm}" />
+  <TextBlock Text="기록 검색" VerticalAlignment="Center" Margin="0,0,12,0" /><TextBox x:Name="HistorySearch" TextChanged="HistorySearchChanged" AutomationProperties.Name="날짜·버전·상태로 실행 기록 검색" ToolTip="날짜·버전·상태로 검색" />
+ </DockPanel>
+ <Grid Grid.Row="2">
+  <ListBox x:Name="History" Style="{StaticResource IndexList}" SelectionChanged="HistorySelected" MouseDoubleClick="HistoryOpenClicked" PreviewKeyDown="HistoryListKeyDown" AutomationProperties.Name="저장된 실행 기록">
+   <ListBox.ItemTemplate><DataTemplate><Grid Margin="4,8"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><StackPanel><TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" /><TextBlock Text="{Binding Detail}" TextWrapping="Wrap" Foreground="{DynamicResource Muted}" Margin="0,7,0,0" /></StackPanel><TextBlock Grid.Column="1" Text="결과 보기" VerticalAlignment="Center" Margin="18,0,4,0" Foreground="{DynamicResource Muted}" /></Grid></DataTemplate></ListBox.ItemTemplate>
+  </ListBox>
+  <StackPanel x:Name="HistoryEmpty" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="420"><TextBlock Text="기록이 없습니다" FontSize="19" FontWeight="SemiBold" /><TextBlock x:Name="HistoryEmptyText" Text="첫 벤치를 마치면 이곳에서 결과를 다시 열 수 있습니다." Style="{StaticResource Hint}" /><Button Content="벤치 준비로" Click="DraftClicked" Style="{StaticResource QuietButton}" HorizontalAlignment="Left" /></StackPanel>
+ </Grid>
+ <DockPanel Grid.Row="3" Margin="0,14,0,0"><Button x:Name="OpenHistoryButton" DockPanel.Dock="Right" Content="선택한 결과 열기" Click="HistoryOpenClicked" Style="{StaticResource SolidAction}" IsEnabled="False" /><TextBlock x:Name="HistoryCount" VerticalAlignment="Center" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" /></DockPanel>
+</Grid>
+
+   </Grid>
+   </Border>
+  </Grid>
+  <Border Grid.Row="2" motion:AshaSurface.Edge="Top" Background="{DynamicResource Paper}" BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0" Padding="20,6">
+   <DockPanel>
+    <TextBlock DockPanel.Dock="Right" Text="Alt 1–3 · 단계   Alt 0 · 목록" Foreground="{DynamicResource Muted}" FontSize="10" Margin="12,0,0,0" />
+    <TextBlock x:Name="State" Text="준비 대기" Foreground="{DynamicResource Muted}" FontSize="11" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+   </DockPanel>
+  </Border>
+  <Canvas x:Name="CompanionLayer" Grid.RowSpan="3" Panel.ZIndex="20" ClipToBounds="True" Background="{x:Null}">
+   <Border x:Name="CompanionHost" Width="96" Height="96" Opacity="0" Background="{x:Null}">
+    <motion:DeskMascot x:Name="Mascot" Width="96" Height="96">
+     <motion:DeskMascot.ContextMenu>
+      <ContextMenu Style="{StaticResource ActionMenu}">
+       <MenuItem Header="아라 · 반응 보기" Click="CompanionPlayClicked" />
+       <MenuItem Header="산책 / 여기서 쉬기" Click="CompanionRoamClicked" />
+       <MenuItem Header="처음 자리로" Click="CompanionHomeClicked" />
+       <MenuItem Header="아라 숨기기" Click="CompanionToggleClicked" />
+      </ContextMenu>
+     </motion:DeskMascot.ContextMenu>
+    </motion:DeskMascot>
+   </Border>
+   <Border x:Name="FoxHost" Width="96" Height="96" Opacity="0" Background="{x:Null}" Visibility="Collapsed">
+    <motion:DeskMascot x:Name="FoxMascot" Character="Fox" Width="96" Height="96">
+     <motion:DeskMascot.ContextMenu>
+      <ContextMenu Style="{StaticResource ActionMenu}">
+       <MenuItem Header="아샤 · 반응 보기" Tag="fox" Click="CompanionPlayClicked" />
+       <MenuItem Header="산책 / 여기서 쉬기" Tag="fox" Click="CompanionRoamClicked" />
+       <MenuItem Header="처음 자리로" Tag="fox" Click="CompanionHomeClicked" />
+       <MenuItem Header="아샤 숨기기" Tag="fox" Click="CompanionToggleClicked" />
+      </ContextMenu>
+     </motion:DeskMascot.ContextMenu>
+    </motion:DeskMascot>
+   </Border>
+  </Canvas>
+ </Grid>
+
+  <Grid x:Name="SettingsOverlay" Visibility="Collapsed" Panel.ZIndex="30" KeyboardNavigation.TabNavigation="Cycle" KeyboardNavigation.ControlTabNavigation="Cycle" KeyboardNavigation.DirectionalNavigation="Contained">
+   <Border Background="#60312C3D" MouseLeftButtonDown="SettingsBackdropClicked" />
+   <Border x:Name="SettingsDialog" Margin="24" MaxWidth="780" MaxHeight="640" Background="{DynamicResource Paper}" BorderBrush="{DynamicResource Line}" BorderThickness="1" CornerRadius="12" AutomationProperties.Name="설정" KeyboardNavigation.TabNavigation="Cycle">
+    <Grid>
+     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+     <DockPanel Margin="26,22,20,16">
+      <Button x:Name="SettingsCloseButton" DockPanel.Dock="Right" Width="36" Height="36" Margin="14,0,0,0" VerticalAlignment="Top" Style="{StaticResource SidebarToggleButton}" Click="SettingsCloseClicked" ToolTip="닫기 · Esc" AutomationProperties.Name="설정 닫기">
+       <Path Data="M5,5 L15,15 M15,5 L5,15" Width="20" Height="20" Stroke="{DynamicResource Muted}" StrokeThickness="1.5" />
+      </Button>
+      <StackPanel><TextBlock Text="설정" FontSize="23" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" /><TextBlock Text="화면 취향을 바꿔도 실험 조건은 그대로 유지됩니다." Style="{StaticResource Hint}" Margin="0,6,0,0" /></StackPanel>
+     </DockPanel>
+     <TabControl x:Name="SettingsTabs" Grid.Row="1" Style="{StaticResource SettingsTabs}" AutomationProperties.Name="설정 분류">
+      <TabItem Header="화면" AutomationProperties.Name="화면 설정">
+       <ScrollViewer x:Name="ScreenSettingsScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="26,20,26,16" Focusable="False">
+        <StackPanel>
+         <TextBlock Text="배경" Style="{StaticResource Heading}" /><TextBlock Text="상단에 풍경을 두거나, 배경 없는 일반 화면을 선택하세요." Style="{StaticResource Hint}" />
+         <UniformGrid x:Name="ScreenChoices" Columns="2" Margin="0,4,-12,8">
+          <RadioButton x:Name="LilacScreen" Tag="0" GroupName="Screen" Style="{StaticResource ScreenChoice}" Width="Auto" Checked="ScreenChoiceChanged" AutomationProperties.Name="연보라"><StackPanel><Image Source="Assets/cloud-station-lofi.png" Height="86" Stretch="UniformToFill" /><TextBlock Text="연보라" Margin="12,8" /></StackPanel></RadioButton>
+          <RadioButton x:Name="RoseScreen" Tag="1" GroupName="Screen" Style="{StaticResource ScreenChoice}" Width="Auto" Checked="ScreenChoiceChanged" AutomationProperties.Name="로즈"><StackPanel><Image Source="Assets/cloud-station-rose-lofi.png" Height="86" Stretch="UniformToFill" /><TextBlock Text="로즈" Margin="12,8" /></StackPanel></RadioButton>
+          <RadioButton x:Name="MintScreen" Tag="2" GroupName="Screen" Style="{StaticResource ScreenChoice}" Width="Auto" Checked="ScreenChoiceChanged" AutomationProperties.Name="민트"><StackPanel><Image Source="Assets/cloud-station-mint-lofi.png" Height="86" Stretch="UniformToFill" /><TextBlock Text="민트" Margin="12,8" /></StackPanel></RadioButton>
+          <RadioButton x:Name="PlainScreen" Tag="3" GroupName="Screen" Style="{StaticResource ScreenChoice}" Width="Auto" Checked="ScreenChoiceChanged" AutomationProperties.Name="일반 화면"><StackPanel><Border Background="#F1F1F0" Height="86"><TextBlock Text="Aa" Foreground="#73716F" FontSize="28" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border><TextBlock Text="일반 화면" Margin="12,8" /></StackPanel></RadioButton>
+         </UniformGrid>
+         <Border BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0" Padding="0,18,0,0">
+          <StackPanel><CheckBox x:Name="AppearanceMotion" Content="화면과 캐릭터의 움직임 사용" Checked="AppearanceOptionsChanged" Unchecked="AppearanceOptionsChanged" /><TextBlock Text="끄면 화면 전환과 두 캐릭터가 정지합니다. Windows 애니메이션 설정을 따르며, 벤치 중에는 자동으로 멈춥니다." Style="{StaticResource Hint}" /></StackPanel>
+         </Border>
+        </StackPanel>
+       </ScrollViewer>
+      </TabItem>
+      <TabItem Header="캐릭터" AutomationProperties.Name="아라와 아샤 설정">
+       <ScrollViewer x:Name="AshaSettingsScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="26,20,26,16" Focusable="False">
+        <StackPanel>
+         <TextBlock Text="함께할 캐릭터" Style="{StaticResource Heading}" />
+         <TextBlock Text="한 마리만 선택하거나 둘 다 불러오세요. 모두 끄면 캐릭터를 숨깁니다." Style="{StaticResource Hint}" />
+         <Grid Margin="0,12,0,0">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="28" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+          <StackPanel Grid.Column="0">
+           <DockPanel Height="68"><motion:DeskMascot Character="Cat" Width="64" Height="64" DockPanel.Dock="Right" IsHitTestVisible="False" Focusable="False" /><CheckBox x:Name="AppearanceCompanion" Content="아라 · 고양이" Checked="AppearanceOptionsChanged" Unchecked="AppearanceOptionsChanged" VerticalAlignment="Center" /></DockPanel>
+           <TextBlock Text="높은 곳을 찾아 오릅니다. 시큰둥하게 바라보다 앞발로 장난칩니다." Style="{StaticResource Hint}" MinHeight="48" />
+           <Border BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0" Padding="0,12,0,0"><StackPanel>
+            <CheckBox x:Name="AppearanceRoaming" Content="스스로 탐색" Checked="AppearanceOptionsChanged" Unchecked="AppearanceOptionsChanged" />
+            <DockPanel Margin="0,10,0,12"><ComboBox x:Name="AppearanceActivity" DockPanel.Dock="Right" Width="130" SelectionChanged="AppearanceOptionsChanged" AutomationProperties.Name="아라 활동량"><ComboBoxItem Content="얌전함" /><ComboBoxItem Content="보통" /><ComboBoxItem Content="활발함" /></ComboBox><TextBlock Text="활동량" VerticalAlignment="Center" /></DockPanel>
+            <Button x:Name="AppearanceHomeButton" Content="아라를 처음 자리로" Click="CompanionHomeClicked" Style="{StaticResource QuietButton}" HorizontalAlignment="Left" />
+           </StackPanel></Border>
+          </StackPanel>
+          <StackPanel Grid.Column="2">
+           <DockPanel Height="68"><motion:DeskMascot Character="Fox" Width="64" Height="64" DockPanel.Dock="Right" IsHitTestVisible="False" Focusable="False" /><CheckBox x:Name="AppearanceFox" Content="아샤 · 여우" Checked="AppearanceOptionsChanged" Unchecked="AppearanceOptionsChanged" VerticalAlignment="Center" /></DockPanel>
+           <TextBlock Text="넓고 낮은 발판을 빠르게 돌아다닙니다. 냄새 맡듯 살피고 꼬리로 반응합니다." Style="{StaticResource Hint}" MinHeight="48" />
+           <Border BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0" Padding="0,12,0,0"><StackPanel>
+            <CheckBox x:Name="AppearanceFoxRoaming" Content="스스로 탐색" Checked="AppearanceOptionsChanged" Unchecked="AppearanceOptionsChanged" />
+            <DockPanel Margin="0,10,0,12"><ComboBox x:Name="AppearanceFoxActivity" DockPanel.Dock="Right" Width="130" SelectionChanged="AppearanceOptionsChanged" AutomationProperties.Name="아샤 활동량"><ComboBoxItem Content="얌전함" /><ComboBoxItem Content="보통" /><ComboBoxItem Content="활발함" /></ComboBox><TextBlock Text="활동량" VerticalAlignment="Center" /></DockPanel>
+            <Button x:Name="AppearanceFoxHome" Tag="fox" Content="아샤를 처음 자리로" Click="CompanionHomeClicked" Style="{StaticResource QuietButton}" HorizontalAlignment="Left" />
+           </StackPanel></Border>
+          </StackPanel>
+         </Grid>
+         <TextBlock Text="끌어 놓으면 아래 발판에 착지합니다. 입력·스크롤 중에는 탐색을 쉬고, 벤치 중에는 둘 다 숨습니다." Style="{StaticResource Hint}" Margin="0,20,0,0" />
+        </StackPanel>
+       </ScrollViewer>
+      </TabItem>
+      <TabItem Header="앱 관리" AutomationProperties.Name="앱 관리 설정">
+       <ScrollViewer x:Name="AppSettingsScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="26,20,26,16" Focusable="False">
+        <StackPanel>
+         <TextBlock Text="기록과 앱 데이터" Style="{StaticResource Heading}" /><TextBlock Text="이전 방식의 기록과 앱 설정이 저장된 폴더를 엽니다. 현재 결과의 보고서는 결과 화면의 ‘내보내기’에서 확인하세요." Style="{StaticResource Hint}" />
+         <Button Content="앱 데이터 폴더 열기" Click="LegacyFolderClicked" AutomationProperties.Name="이전 기록·앱 데이터 폴더 열기" Style="{StaticResource QuietButton}" HorizontalAlignment="Left" Margin="0,4,0,24" />
+         <Border BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0" Padding="0,20,0,0"><StackPanel><TextBlock Text="최근 알림" Style="{StaticResource Heading}" /><TextBlock x:Name="LatestNotice" Text="새 알림이 없습니다." Style="{StaticResource Hint}" /></StackPanel></Border>
+        </StackPanel>
+       </ScrollViewer>
+      </TabItem>
+     </TabControl>
+     <Border Grid.Row="2" BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0" Padding="26,14">
+      <TextBlock x:Name="AppearanceStatus" Text="변경하면 바로 적용하고 저장합니다. · Esc로 닫기" Foreground="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+     </Border>
+    </Grid>
+   </Border>
+  </Grid>
+</Grid>
+</Window>
+

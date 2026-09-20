@@ -17,7 +17,8 @@ public sealed class UnityEnvironment : IAsyncDisposable
     public string? OwnerToken { get; init; }
     public bool OwnsEditor => process is not null;
     public static async Task<UnityEnvironment> OpenAsync(IProcessRunner runner, IInstanceDiscovery discovery,
-        BridgeTarget target, string logPath, TimeSpan timeout, Action<string, string> observe, CancellationToken ct, bool requireNew)
+        BridgeTarget target, string logPath, TimeSpan timeout, Action<string, string> observe, CancellationToken ct, bool requireNew,
+        string[]? extraArguments = null)
     {
         var environment = new UnityEnvironment { Target = target };
         try
@@ -34,7 +35,7 @@ public sealed class UnityEnvironment : IAsyncDisposable
             {
                 var started = new TaskCompletionSource<(int, DateTimeOffset)>(TaskCreationOptions.RunContinuationsAsynchronously);
                 environment.process = runner.RunAsync(new(Guid.NewGuid(), target.UnityExecutable,
-                    ["-batchmode", "-nographics", "-projectPath", target.ProjectPath, "-logFile", logPath], target.ProjectPath),
+                    ["-batchmode", "-nographics", "-projectPath", target.ProjectPath, "-logFile", logPath, ..extraArguments ?? []], target.ProjectPath),
                     TimeSpan.FromDays(2), frame =>
                     {
                         if (frame.Kind == "started")
@@ -81,12 +82,12 @@ public sealed class UnityEnvironment : IAsyncDisposable
         if (project.UnityBuild is null || version is null || !version.StartsWith(project.UnityBuild + "_", StringComparison.Ordinal))
             throw new InvalidDataException("프로젝트 Editor 버전과 선택한 실행 파일 버전이 다릅니다.");
     }
-    public static async Task InstallFixtureAsync(string project, CancellationToken ct)
+    public static async Task InstallFixtureAsync(string project, CancellationToken ct, string? fixturePath = null)
     {
         string dir = Path.Combine(project, "Assets", "DeskBenchmark", "Editor");
         if (Directory.Exists(Path.Combine(project, "Assets", "DeskBenchmark"))) throw new IOException("기준 프로젝트에 DeskBenchmark가 있습니다. 깨끗한 기준을 사용하세요.");
         Directory.CreateDirectory(dir);
-        await File.WriteAllTextAsync(Path.Combine(dir, "DeskProbe.cs"), await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "Assets", "DeskProbe.cs.txt"), ct), ct);
+        await File.WriteAllTextAsync(Path.Combine(dir, "DeskProbe.cs"), await File.ReadAllTextAsync(fixturePath ?? Path.Combine(AppContext.BaseDirectory, "Assets", "DeskProbe.cs.txt"), ct), ct);
         await WriteRevisionAsync(project, 1, ct);
     }
     public static Task WriteRevisionAsync(string project, int revision, CancellationToken ct) =>

@@ -12,7 +12,16 @@
     <ProjectReference Include="../UnityBridgeDesk.Core/UnityBridgeDesk.Core.csproj" />
     <ProjectReference Include="../UnityBridgeDesk.Infrastructure/UnityBridgeDesk.Infrastructure.csproj" />
     <Resource Include="Assets/cloud-station.png" />
+    <Resource Include="Assets/cloud-station-rose.png" />
+    <Resource Include="Assets/cloud-station-mint.png" />
     <Resource Include="Assets/desk.ico" />
+    <Resource Include="Assets/desk-companion-sd.png" />
+    <Resource Include="Assets/asha-sprites.png" />
+    <Resource Include="Assets/asha-fox-distinct-sprites.png" />
+    <Resource Include="Assets/asha-fox-walk-v2.png" />
+    <Resource Include="Assets/cloud-station-lofi.png" />
+    <Resource Include="Assets/cloud-station-rose-lofi.png" />
+    <Resource Include="Assets/cloud-station-mint-lofi.png" />
   </ItemGroup>
   <ItemGroup><ProjectReference Include="../UnityBridgeDesk.Worker/UnityBridgeDesk.Worker.csproj" ReferenceOutputAssembly="false" /></ItemGroup>
   <Target Name="CopyWorker" AfterTargets="Build" Condition="'$(RuntimeIdentifier)' == ''">

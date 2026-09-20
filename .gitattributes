@@ -12,4 +12,5 @@
 *.c text eol=lf
 *.rc text eol=lf
 *.png binary
+*.gif binary
 *.ico binary

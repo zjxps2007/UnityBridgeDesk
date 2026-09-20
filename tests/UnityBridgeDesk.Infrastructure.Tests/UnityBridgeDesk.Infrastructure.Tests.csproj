@@ -10,6 +10,7 @@
     <PackageReference Include="MSTest.TestFramework" Version="4.1.0" />
     <ProjectReference Include="../../src/UnityBridgeDesk.Infrastructure/UnityBridgeDesk.Infrastructure.csproj" />
     <Compile Include="../Fixtures/SampleData.cs" Link="SampleData.cs" />
+    <Compile Include="../Fixtures/SpeedReportSample.cs" Link="SpeedReportSample.cs" />
     <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
   </ItemGroup>
 </Project>

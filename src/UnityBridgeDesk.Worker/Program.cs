@@ -11,6 +11,25 @@ using UnityBridgeDesk.Infrastructure.Ai;
 
 Console.InputEncoding = Encoding.UTF8;
 Console.OutputEncoding = new UTF8Encoding(false);
+if(args is ["--compare-tools",var comparisonPath])
+{
+    using var stop=new CancellationTokenSource();
+    Console.CancelKeyPress+=(_,e)=>{e.Cancel=true;stop.Cancel();};
+    try
+    {
+        var comparison=await UnityBridgeDesk.Infrastructure.SpeedBench.SpeedFiles.Read<UnityBridgeDesk.Infrastructure.SpeedBench.OfficialComparisonRequest>(comparisonPath);
+        var result=await UnityBridgeDesk.Infrastructure.SpeedBench.OfficialComparison.Run(comparison,AppContext.BaseDirectory,
+            new Progress<string>(Console.WriteLine),stop.Token);
+        Console.WriteLine(JsonSerializer.Serialize(new{result.Id,result.Status,valid=result.Results.Count(r=>r.Status=="success"),planned=result.Plan.Length}));
+        return result.Status=="completed" && result.Results.All(r=>r.Status=="success") ? 0 : 1;
+    }
+    catch(OperationCanceledException) {Console.Error.WriteLine("비교 준비 중단");return 130;}
+    catch(Exception error) {Console.Error.WriteLine(error.Message);return 1;}
+}
+if(args is ["--local-trial",var localRequest,var localResult])
+    return await UnityBridgeDesk.Infrastructure.SpeedBench.SpeedGuest.RunLocalFile(localRequest,localResult);
+if(args is ["--vm-trial",var vmRequest,var vmResult])
+    return await UnityBridgeDesk.Infrastructure.SpeedBench.SpeedGuest.RunFile(vmRequest,vmResult);
 if(args is ["--integration",var integration])return await DiagnosticIntegration.RunAsync(integration);
 if(args is ["--recover-history",var historyRoot,var exportRoot])
 {
@@ -68,6 +87,13 @@ if (args is ["--fixture", var behavior, ..])
     if (behavior == "echo") { Console.WriteLine(JsonSerializer.Serialize(args.Skip(2))); return 0; }
     if (behavior == "large") { await Task.WhenAll(Console.Out.WriteAsync(new string('한', 200000)), Console.Error.WriteAsync(new string('E', 200000))); return 0; }
     if (behavior == "hang") { await Task.Delay(Timeout.Infinite); return 0; }
+    if (behavior == "spawn-hang")
+    {
+        var info = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false, CreateNoWindow = true };
+        info.ArgumentList.Add("--fixture"); info.ArgumentList.Add("hang");
+        using var grandchild = Process.Start(info)!;
+        Console.WriteLine(grandchild.Id); await Console.Out.FlushAsync(); await Task.Delay(Timeout.Infinite); return 0;
+    }
     if (behavior == "fail") { Console.Error.WriteLine("fixture failure"); return 7; }
     if (behavior == "broken") { Console.Write("{bad"); return 0; }
     if (behavior == "ansi") { Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);Console.OutputEncoding=Encoding.GetEncoding(949);Console.Write("한글 공백");return 0; }

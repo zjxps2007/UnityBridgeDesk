@@ -1,0 +1,151 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:UnityBridgeDesk.Desktop" xmlns:motion="clr-namespace:UnityBridgeDesk.Desktop.Controls">
+ <local:ExperimentLabelConverter x:Key="ExperimentLabel" />
+ <Geometry x:Key="SidebarExpandChevron">M10,6.5 L12.5,9 L10,11.5</Geometry>
+ <Geometry x:Key="SidebarCollapseChevron">M12.5,6.5 L10,9 L12.5,11.5</Geometry>
+ <Style x:Key="SidebarToggleFocus" TargetType="Control">
+  <Setter Property="Template">
+   <Setter.Value>
+    <ControlTemplate>
+     <Border Margin="2" BorderThickness="1" BorderBrush="{DynamicResource AccentInk}" CornerRadius="5" />
+    </ControlTemplate>
+   </Setter.Value>
+  </Setter>
+ </Style>
+ <Style x:Key="SidebarToggleButton" TargetType="Button">
+  <Setter Property="Width" Value="36" />
+  <Setter Property="Height" Value="36" />
+  <Setter Property="Padding" Value="0" />
+  <Setter Property="Margin" Value="0" />
+  <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+  <Setter Property="Cursor" Value="Hand" />
+  <Setter Property="FocusVisualStyle" Value="{StaticResource SidebarToggleFocus}" />
+  <Setter Property="Template">
+   <Setter.Value>
+    <ControlTemplate TargetType="Button">
+     <Grid Background="Transparent">
+      <Border x:Name="Hover" Background="{DynamicResource Tint}" CornerRadius="6" Opacity="0" IsHitTestVisible="False" />
+      <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+     </Grid>
+     <ControlTemplate.Triggers>
+      <Trigger Property="IsMouseOver" Value="True">
+       <Setter TargetName="Hover" Property="Opacity" Value="1" />
+       <Setter Property="Foreground" Value="{DynamicResource AccentInk}" />
+      </Trigger>
+      <Trigger Property="IsEnabled" Value="False">
+       <Setter Property="Opacity" Value="0.5" />
+      </Trigger>
+     </ControlTemplate.Triggers>
+    </ControlTemplate>
+   </Setter.Value>
+  </Setter>
+ </Style>
+ <Style x:Key="IndexCaption" TargetType="TextBlock">
+  <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+  <Setter Property="FontSize" Value="11" />
+  <Setter Property="Margin" Value="6,0,0,6" />
+ </Style>
+ <Style x:Key="IndexItem" TargetType="ListBoxItem">
+  <Setter Property="Foreground" Value="{DynamicResource Ink}" />
+  <Setter Property="Padding" Value="10,7" />
+  <Setter Property="Margin" Value="0,1" />
+  <Setter Property="MinHeight" Value="32" />
+  <Setter Property="Cursor" Value="Hand" />
+  <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+  <Setter Property="Template">
+   <Setter.Value>
+    <ControlTemplate TargetType="ListBoxItem">
+     <Border x:Name="Focus" BorderThickness="1" BorderBrush="Transparent" CornerRadius="7">
+      <Grid>
+       <Border x:Name="Surface" Background="Transparent" CornerRadius="6" />
+       <Border x:Name="Hover" Background="{DynamicResource Tint}" CornerRadius="6" Opacity="0" IsHitTestVisible="False" />
+       <Border x:Name="SelectionLine" Width="3" Background="Transparent" HorizontalAlignment="Left" CornerRadius="1" Margin="0,8" />
+       <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" />
+      </Grid>
+     </Border>
+     <ControlTemplate.Triggers>
+      <Trigger Property="IsMouseOver" Value="True">
+       <Setter TargetName="Hover" Property="Opacity" Value="1" />
+      </Trigger>
+      <Trigger Property="IsSelected" Value="True">
+       <Setter TargetName="Surface" Property="Background" Value="{DynamicResource Tint}" />
+       <Setter TargetName="SelectionLine" Property="Background" Value="{DynamicResource AccentInk}" />
+       <Setter Property="FontWeight" Value="SemiBold" />
+      </Trigger>
+      <Trigger Property="IsKeyboardFocusWithin" Value="True">
+       <Setter TargetName="Focus" Property="BorderBrush" Value="{DynamicResource AccentInk}" />
+      </Trigger>
+      <Trigger Property="IsEnabled" Value="False">
+       <Setter Property="Opacity" Value="0.5" />
+      </Trigger>
+     </ControlTemplate.Triggers>
+    </ControlTemplate>
+   </Setter.Value>
+  </Setter>
+ </Style>
+ <Style x:Key="IndexList" TargetType="ListBox">
+  <Setter Property="Background" Value="Transparent" />
+  <Setter Property="BorderThickness" Value="0" />
+  <Setter Property="Padding" Value="0" />
+  <Setter Property="FontSize" Value="12" />
+  <Setter Property="ItemContainerStyle" Value="{StaticResource IndexItem}" />
+  <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+  <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+  <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
+  <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True" />
+  <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling" />
+  <Setter Property="VirtualizingPanel.ScrollUnit" Value="Pixel" />
+  <Setter Property="ItemsPanel">
+   <Setter.Value>
+    <ItemsPanelTemplate>
+     <VirtualizingStackPanel />
+    </ItemsPanelTemplate>
+   </Setter.Value>
+  </Setter>
+ </Style>
+ <Style x:Key="ConditionIndexList" TargetType="ListBox" BasedOn="{StaticResource IndexList}">
+  <Setter Property="Margin" Value="8,0,0,0" />
+  <Setter Property="ItemContainerStyle">
+   <Setter.Value>
+    <Style TargetType="ListBoxItem" BasedOn="{StaticResource IndexItem}">
+     <Setter Property="Padding" Value="10,5" />
+     <Setter Property="MinHeight" Value="28" />
+    </Style>
+   </Setter.Value>
+  </Setter>
+ </Style>
+ <Style x:Key="IndexStatus" TargetType="TextBlock">
+  <Setter Property="FontSize" Value="11" />
+  <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+  <Setter Property="VerticalAlignment" Value="Center" />
+  <Style.Triggers>
+   <DataTrigger Binding="{Binding StatusCode}" Value="success">
+    <Setter Property="Foreground" Value="#386555" />
+   </DataTrigger>
+   <DataTrigger Binding="{Binding StatusCode}" Value="failed">
+    <Setter Property="Foreground" Value="#9E344D" />
+   </DataTrigger>
+   <DataTrigger Binding="{Binding StatusCode}" Value="cleanup-failed">
+    <Setter Property="Foreground" Value="#9E344D" />
+   </DataTrigger>
+   <DataTrigger Binding="{Binding StatusCode}" Value="running">
+    <Setter Property="Foreground" Value="{DynamicResource AccentInk}" />
+   </DataTrigger>
+  </Style.Triggers>
+ </Style>
+ <DataTemplate x:Key="TrialIndexTemplate">
+  <StackPanel>
+   <DockPanel>
+    <TextBlock DockPanel.Dock="Right" Text="{Binding Status}" Style="{StaticResource IndexStatus}" Margin="8,0,0,0" />
+    <TextBlock Text="{Binding Order, StringFormat='#{0}'}" FontFamily="Segoe UI" FontWeight="SemiBold" />
+   </DockPanel>
+   <TextBlock Text="{Binding Release}" ToolTip="{Binding Release}" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource Muted}" FontSize="11" Margin="0,3,0,0" />
+   <TextBlock Text="{Binding WorkMs, StringFormat={}{0:N2} ms, TargetNullValue=—}" FontSize="12" Typography.NumeralAlignment="Tabular" Margin="0,3,0,0" Foreground="{DynamicResource Ink}" />
+  </StackPanel>
+ </DataTemplate>
+ <DataTemplate x:Key="LiveIndexTemplate">
+  <StackPanel>
+   <ContentControl Content="{Binding}" ContentTemplate="{StaticResource TrialIndexTemplate}" />
+   <TextBlock Text="{Binding Caption}" TextWrapping="Wrap" FontSize="10" Foreground="{DynamicResource Muted}" Margin="0,3,0,0" />
+  </StackPanel>
+ </DataTemplate>
+</ResourceDictionary>

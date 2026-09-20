@@ -1,0 +1,20 @@
+{
+  "method": "Built-in image_gen edits; original compositions and palettes preserved.",
+  "assets": [
+    {
+      "path": "src/UnityBridgeDesk.Desktop/Assets/cloud-station-lofi.png",
+      "input": "src/UnityBridgeDesk.Desktop/Assets/cloud-station.png",
+      "prompt": "Use case: style-transfer. Edit this existing UnityBridge Desk landscape illustration, not a new composition. Lightly retouch only the drawing style into a polished hand-painted lofi anime background: delicate confident architectural lines, softly simplified painterly cloud masses, fine subtle paper/gouache texture, calm atmospheric depth. Preserve the exact wide framing, all architecture and platform on the right, the crescent position, distant mountains, horizon height, light direction, pastel lilac and peach palette, existing distinct cloud silhouettes and large open left/center sky. Keep scenery dominant. No characters, UI, text, logos, added objects, glow effects, grain noise, or new decorative motifs. The result should unmistakably be the same original scene with a modest illustration-style refinement. Landscape aspect ratio matching reference."
+    },
+    {
+      "path": "src/UnityBridgeDesk.Desktop/Assets/cloud-station-rose-lofi.png",
+      "input": "src/UnityBridgeDesk.Desktop/Assets/cloud-station-rose.png",
+      "prompt": "Use case: style-transfer. Edit this existing UnityBridge Desk landscape illustration, not a new composition. Lightly retouch only the drawing style into a polished hand-painted lofi anime background: delicate confident architectural lines, softly simplified painterly cloud masses, fine subtle paper/gouache texture, calm atmospheric depth. Preserve the exact wide framing, all architecture and platform on the right, the crescent position and the distinct rounded cumulus forms, distant mountains, horizon height, light direction, warm pastel rose, peach and pink palette, existing distinct cloud silhouettes and large open left/center sky. Keep scenery dominant. No characters, UI, text, logos, added objects, glow effects, grain noise, or new decorative motifs. The result should unmistakably be the same original scene with a modest illustration-style refinement. Landscape aspect ratio matching reference."
+    },
+    {
+      "path": "src/UnityBridgeDesk.Desktop/Assets/cloud-station-mint-lofi.png",
+      "input": "src/UnityBridgeDesk.Desktop/Assets/cloud-station-mint.png",
+      "prompt": "Use case: style-transfer. Edit this existing UnityBridge Desk landscape illustration, not a new composition. Lightly retouch only the drawing style into a polished hand-painted lofi anime background: delicate confident architectural lines, softly simplified painterly cloud masses, fine subtle paper/gouache texture, calm atmospheric depth. Preserve the exact wide framing, all architecture and platform on the right, absence of a crescent, and the delicate long windswept cloud streaks, distant mountains, horizon height, light direction, cool pastel mint, sky blue, pale aqua and ivory palette, existing distinct cloud silhouettes and large open left/center sky. Keep scenery dominant. No characters, UI, text, logos, added objects, glow effects, grain noise, or new decorative motifs. The result should unmistakably be the same original scene with a modest illustration-style refinement. Landscape aspect ratio matching reference."
+    }
+  ]
+}

@@ -4,12 +4,30 @@ using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+#if DESK_PIPELINE
+using Unity.Pipeline.Commands;
+#elif DESK_GO_CLI
+using UnityCliConnector;
+#else
 using UnityBridgeConnector;
+#endif
 
+#if DESK_GO_CLI
+[UnityCliTool(Name = "desk_probe", Description = "UnityBridge Desk fixed experiment fixture, draft-v1")]
+#elif !DESK_PIPELINE
 [UnityBridgeTool(Name = "desk_probe", Description = "UnityBridge Desk fixed experiment fixture, draft-v1")]
+#endif
 public static class DeskProbe
 {
+#if DESK_PIPELINE
+    [CliCommand("desk_probe", "Desk shared benchmark workload", MainThreadRequired = true)]
+    public static object PipelineCommand([CliArg("parameters", "JSON workload input", Required = true)] string parameters)
+        => Run(JObject.Parse(parameters));
+#else
     public static object HandleCommand(JObject p)
+        => new SuccessResponse("Desk fixture", Run(p));
+#endif
+    public static object Run(JObject p)
     {
         object value;
         string action = (string)p["action"];
@@ -41,9 +59,49 @@ public static class DeskProbe
                 objects.Count(x => x.name == "DeskFixed_" + i && Vector3.Distance(x.position, Expected(i)) < .00001f) == 1);
         }
         else if (action == "revision") value = DeskRevision.Value;
+        else if (action == "stress_objects")
+        {
+            int count = (int)p["count"];
+            if (count < 1 || count > 10000) throw new ArgumentException("count");
+            var objects = new GameObject[count];
+            try
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    objects[i] = new GameObject("DeskStress_" + i);
+                    objects[i].transform.position = Expected(i);
+                }
+                value = count;
+            }
+            finally { foreach (var obj in objects) if (obj != null) UnityEngine.Object.DestroyImmediate(obj); }
+        }
         else if (action == "state") value = new { playing = EditorApplication.isPlaying, paused = EditorApplication.isPaused, compiling = EditorApplication.isCompiling };
-        else return new ErrorResponse("Unknown fixture action");
-        return new SuccessResponse("Desk fixture", new { nonce = (string)p["nonce"], projectPath = System.IO.Path.GetDirectoryName(Application.dataPath), pid = System.Diagnostics.Process.GetCurrentProcess().Id, value });
+        else throw new ArgumentException("Unknown fixture action");
+        return new { nonce = (string)p["nonce"], projectPath = System.IO.Path.GetDirectoryName(Application.dataPath), pid = System.Diagnostics.Process.GetCurrentProcess().Id, value };
     }
     static Vector3 Expected(int i) => new Vector3(i % 100, i / 100, i % 7);
 }
+
+#if DESK_PIPELINE
+// Observe editor readiness without invoking a benchmark command. Never persist the server token.
+[InitializeOnLoad]
+static class DeskPipelineReadiness
+{
+    static double next;
+    static DeskPipelineReadiness() { EditorApplication.update += Tick; }
+    static void Tick()
+    {
+        if (EditorApplication.timeSinceStartup < next) return;
+        next = EditorApplication.timeSinceStartup + .5;
+        var package = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(CliCommandAttribute).Assembly);
+        var project = System.IO.Path.GetDirectoryName(Application.dataPath);
+        var data = new { projectPath = project, pid = System.Diagnostics.Process.GetCurrentProcess().Id,
+            timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), unityVersion = Application.unityVersion,
+            connectorVersion = package?.version, compileErrors = EditorUtility.scriptCompilationFailed,
+            state = EditorApplication.isCompiling || EditorApplication.isUpdating ? "compiling" :
+                EditorApplication.isPaused ? "paused" : EditorApplication.isPlaying ? "playing" : "ready" };
+        try { System.IO.File.WriteAllText(System.IO.Path.Combine(project, "Library", "desk-pipeline-ready.json"), Newtonsoft.Json.JsonConvert.SerializeObject(data)); }
+        catch (System.IO.IOException) { }
+    }
+}
+#endif
