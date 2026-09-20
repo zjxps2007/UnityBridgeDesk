@@ -164,6 +164,7 @@ public static class SpeedStatistics
 
     public static SpeedOptions? FollowupOptions(SpeedReport report)
     {
+        if (report.Run.Options.Research?.Stage is "aa" or "sensitivity") return null;
         if (report.Comparisons.Length == 0 || report.Comparisons.Any(c => !c.CanPlan)) return null;
         int count = report.Comparisons.Max(c => c.Evidence!.SuggestedBlocks!.Value);
         // Finish complete rotations so each version occupies each within-block position equally.

@@ -73,6 +73,8 @@ public sealed class SpeedChartOrderingTests
     [DataRow(5)]
     [DataRow(6)]
     [DataRow(9)]
+    [DataRow(10)]
+    [DataRow(11)]
     public async Task OldGraphReportsAreRegeneratedWithoutChangingOriginalFilesOrMeasurements(int oldFormat)
     {
         string root = SampleData.TestDirectory(); var report = new SpeedReport(RotatedRun());
@@ -86,7 +88,7 @@ public sealed class SpeedChartOrderingTests
         Assert.AreNotEqual(old, updated);
         Assert.AreEqual(oldHash, await SpeedFiles.Hash(Path.Combine(old, SpeedReportFiles.ChartName)));
         Assert.AreEqual(oldFormat, JsonNode.Parse(await File.ReadAllTextAsync(metadata))!["FormatVersion"]!.GetValue<int>());
-        Assert.AreEqual(10, JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(updated, ".report.json")))!["FormatVersion"]!.GetValue<int>());
+        Assert.AreEqual(12, JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(updated, ".report.json")))!["FormatVersion"]!.GetValue<int>());
         Assert.AreEqual(updated, await SpeedReportFiles.Export(root, report));
     }
 }

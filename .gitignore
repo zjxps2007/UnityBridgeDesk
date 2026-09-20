@@ -74,6 +74,9 @@ Desktop.ini
 .agents/
 
 # Local design history and diagnostics; public docs live in docs/.
+__pycache__/
+*.py[cod]
+
 # Keep the mascot's editable source and preview used by build/Build-Icon.ps1.
 /design/*
 !/design/branding/

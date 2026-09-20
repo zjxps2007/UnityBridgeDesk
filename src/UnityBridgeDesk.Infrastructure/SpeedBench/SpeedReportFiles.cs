@@ -10,7 +10,7 @@ public static class SpeedReportFiles
     public const string ChartName = "03_결과그래프.svg";
     public const string MethodologyName = "04_측정근거.txt";
     private static readonly string[] ReportNames = [SummaryName, WorkbookName, IssuesName, ChartName, MethodologyName];
-    private const int FormatVersion = 10;
+    private const int FormatVersion = 12;
     private static readonly SemaphoreSlim Gate = new(1);
     private sealed record Manifest(int FormatVersion, Guid RunId, string SnapshotSha256, DateTimeOffset GeneratedAt, Dictionary<string, string> Files);
 
@@ -47,7 +47,7 @@ public static class SpeedReportFiles
             {
                 await File.WriteAllTextAsync(Path.Combine(temporary, SummaryName), report.Text(), new UTF8Encoding(true), ct);
                 await File.WriteAllTextAsync(Path.Combine(temporary, IssuesName), report.Issues(), new UTF8Encoding(true), ct);
-                await File.WriteAllTextAsync(Path.Combine(temporary, MethodologyName), SpeedStatistics.Explanation(report), new UTF8Encoding(true), ct);
+                await File.WriteAllTextAsync(Path.Combine(temporary, MethodologyName), SpeedStatistics.Explanation(report) + "\n\n" + report.ResearchSummary, new UTF8Encoding(true), ct);
                 SpeedWorkbook.Write(Path.Combine(temporary, WorkbookName), report, ct);
                 SpeedCharts.WriteSvg(Path.Combine(temporary, ChartName), report);
                 var hashes = new Dictionary<string, string>();

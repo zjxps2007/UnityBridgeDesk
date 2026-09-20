@@ -19,6 +19,7 @@ namespace UnityBridgeDesk.Desktop;
 public partial class SpeedBenchWindow : Window
 {
     private readonly string dataRoot;
+    private readonly string WorkerDirectory;
     private readonly ReleaseRepository repository;
     private readonly ISpeedBenchWorkflow workflow;
     private LocalSpeedSettings settings = new();
@@ -48,6 +49,7 @@ public partial class SpeedBenchWindow : Window
         string worker = Path.Combine(AppContext.BaseDirectory, "worker");
         if (!File.Exists(Path.Combine(worker, "UnityBridgeDesk.Worker.exe")))
             worker = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../UnityBridgeDesk.Worker/bin/Release/net10.0-windows"));
+        WorkerDirectory = worker;
         this.workflow = workflow ?? new SpeedBenchWorkflow(root, worker); InitializeComponent(); ApplyTheme(); InitializeNavigation(); InitializeMotion();
         Title += " · v" + typeof(SpeedBenchWindow).Assembly.GetName().Version!.ToString(3);
         foreach (var field in OptionFields) field.TextChanged += PreparationChanged;
@@ -134,10 +136,11 @@ public partial class SpeedBenchWindow : Window
             ExperimentFields.Where(c => c.IsChecked == true).Select(c => c.Name).ToArray(), S01.IsChecked == true ? Read(StressRequests) : previous.StressRequests, S01.IsChecked == true ? Read(StressConcurrency) : previous.StressConcurrency,
             S01.IsChecked != true ? previous.StressCommands : string.IsNullOrWhiteSpace(StressScenarios.Text) ? null :
                 System.Text.Json.JsonSerializer.Deserialize<StressCommand[]>(StressScenarios.Text, SpeedProtocol.Json)
-                    ?? throw new ArgumentException("시나리오는 JSON 배열이어야 합니다.")); value.Validate(); return value;
+                    ?? throw new ArgumentException("시나리오는 JSON 배열이어야 합니다."), ReadResearch()); value.Validate(); return value;
     }
     private void ApplyOptions(SpeedOptions options)
     {
+        ApplyResearch(options.Research);
         int[] values = [options.Repeats, options.Warmups, options.Calls, options.TimeoutSeconds, options.PrepareSeconds, options.Seed, options.StressRequests, options.StressConcurrency];
         for (int i = 0; i < values.Length; i++) OptionFields[i].Text = values[i].ToString(CultureInfo.InvariantCulture);
         foreach (var c in ExperimentFields) c.IsChecked = options.Selected.Contains(c.Name);
@@ -158,7 +161,7 @@ public partial class SpeedBenchWindow : Window
             box.Checked += PreparationChanged; box.Unchecked += PreparationChanged;
             ReleaseList.Children.Add(box);
         }
-        ReleaseStatus.Text = releases.Length == 0 ? "릴리스 새로 확인을 눌러 공식 목록을 가져오세요." : $"{releases.Length}개 릴리스 · CLI + Connector 조합 비교";
+        ReleaseStatus.Text = releases.Length == 0 ? "릴리스 새로 확인을 눌러 공식 목록을 가져오세요." : $"{releases.Length}개 릴리스 발견 · CLI + Connector 목록";
         UpdatePreparation();
     }
     private async Task Save(CancellationToken ct, bool tolerateInvalidOptions = false, bool appearanceOnly = false)
@@ -196,12 +199,12 @@ public partial class SpeedBenchWindow : Window
     private async void ReleasesClicked(object sender, RoutedEventArgs e) => await Work(async ct => { ReleaseStatus.Text = "공식 릴리스 조회 중…"; DrawReleases(await repository.List(ct)); Log("릴리스 목록을 확인했습니다."); }, ReleaseSection);
     private async Task PrepareReleases(CancellationToken ct)
     {
-        var choices = Selected(); var official = ReadOfficialSelection(); var go = ReadGoSelection();
-        SpeedBenchWorkflow.ValidateSelection(choices.Length, official is not null, go is not null); official?.Validate(); go?.Validate();
+        var choices = Selected(); var official = ReadOfficialSelection(); var go = ReadGoSelection(); bool aa = IsAa;
+        SpeedBenchWorkflow.ValidateSelection(choices.Length, official is not null, go is not null, aa); official?.Validate(); go?.Validate();
         if (EditorList.SelectedItem is not LocalCandidate editor) throw new IOException("설치된 Unity를 선택해 주세요.");
         string? baseline = BaselineList.SelectedItem as string;
         var progress = new Progress<string>(message => { ReleaseStatus.Text = message; Log(message); }); prepared.Clear();
-        prepared.AddRange(await Task.Run(() => workflow.Prepare(editor.Path, choices, official, baseline, progress, ct, go), ct));
+        prepared.AddRange(await Task.Run(() => workflow.Prepare(editor.Path, choices, official, baseline, progress, ct, go, aa), ct));
         ReleaseStatus.Text = "파일 준비 완료 · " + string.Join(" / ", prepared.Select(r => r.Tag)) + "\n" +
             string.Join("\n", prepared.Where(r => r.OfficialUnity is null && r.GoUnity is null).Select(CliDistribution.CompatibilityNote).Where(n => n is not null)); await Save(ct, true);
     }
@@ -211,10 +214,11 @@ public partial class SpeedBenchWindow : Window
     {
         if (EditorList.SelectedItem is not LocalCandidate editor) throw new IOException("설치된 Unity를 선택해 주세요.");
         var options = ReadOptions();
-        SpeedBenchWorkflow.ValidateSelection(Selected().Length, IncludeOfficial.IsChecked == true, IncludeGo.IsChecked == true); ReadOfficialSelection()?.Validate(); ReadGoSelection()?.Validate();
+        SpeedBenchWorkflow.ValidateSelection(Selected().Length, IncludeOfficial.IsChecked == true, IncludeGo.IsChecked == true, IsAa); ReadOfficialSelection()?.Validate(); ReadGoSelection()?.Validate();
+        if (options.Research?.Stage is "confirmatory" or "aa" or "sensitivity" && options.Repeats % SelectedTargetCount != 0) throw new ArgumentException("실험 횟수는 대상 수의 배수로 설정하세요.");
         BeginRun(options);
         await PrepareReleases(ct); await Save(ct);
-        var progress = new Progress<string>(Log);
+        var progress = new Progress<string>(message => { if (options.Research?.QuietProgress != true) Log(message); });
         var live = new Progress<SpeedLiveProgress>(ShowProgress);
         shownRun = await Task.Run(() => workflow.Run(editor.Path, prepared.ToArray(), options, progress, live, ct), ct);
         lastFinishedRun = shownRun;
@@ -227,12 +231,20 @@ public partial class SpeedBenchWindow : Window
         if (undoInputs is null)
         {
             undoInputs = OptionFields.Select(b => b.Text).ToArray(); undoExperiments = ExperimentFields.Select(c => c.IsChecked == true).ToArray();
+            undoResearch = (ResearchStage.SelectedIndex, ResearchQuestion.Text, ResearchTolerance.Text, ResearchQuiet.IsChecked, ResearchStudyGroup.Text, ResearchSessionNote.Text);
             ApplyOptions(new()); ResetButton.Content = "초기화 되돌리기"; await Save(ct); Log("실험 조건을 초기화했습니다. Unity·릴리스·결과는 유지했습니다.");
         }
         else
         {
             for (int i = 0; i < OptionFields.Length; i++) OptionFields[i].Text = undoInputs[i];
             for (int i = 0; i < ExperimentFields.Length; i++) ExperimentFields[i].IsChecked = undoExperiments![i];
+            if (undoResearch is { } research)
+            {
+                applyingResearch = true;
+                try { ResearchStage.SelectedIndex = research.Stage; ResearchQuestion.Text = research.Question;
+                    ResearchTolerance.Text = research.Tolerance; ResearchQuiet.IsChecked = research.Quiet; ResearchStudyGroup.Text = research.StudyGroup; ResearchSessionNote.Text = research.SessionNote; }
+                finally { applyingResearch = false; undoResearch = null; }
+            }
             undoInputs = null; undoExperiments = null; ResetButton.Content = "벤치 설정 초기화";
             try { await Save(ct); } catch (ArgumentException) { } Log("이전 실험 입력을 복원했습니다.");
         }
@@ -244,7 +256,7 @@ public partial class SpeedBenchWindow : Window
             .OrderByDescending(d => File.GetLastWriteTimeUtc(Path.Combine(d, "run.json"))).Take(200))
         {
             string file = Path.Combine(directory, "run.json"); if (!File.Exists(file)) continue;
-            try { var run = await SpeedFiles.Read<SpeedRun>(file, ct); items.Add(new(run.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm") + " · " + new SpeedReport(run).State, string.Join(" / ", run.Releases.Select(r => r.Tag)), file)); }
+            try { var run = await SpeedFiles.Read<SpeedRun>(file, ct); items.Add(new(run.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm") + " · " + new SpeedReport(run).State, string.Join(" / ", run.Releases.Select(r => r.Tag)) + (run.Options.Research?.StudyGroup is { Length: > 0 } group ? " · 연구 " + group : "") + " · 세션 " + run.Id.ToString("N")[..8], file)); }
             catch (Exception e) when (e is IOException or System.Text.Json.JsonException) { }
         }
         historyItems = items.OrderByDescending(i => File.GetLastWriteTimeUtc(i.Path)).ToArray();
@@ -290,7 +302,7 @@ public partial class SpeedBenchWindow : Window
         ResultStatus.Text = $"{report.State} · {run.StartedAt.ToLocalTime():yyyy-MM-dd HH:mm}";
         ResultContext.Text = $"열어 본 기록: {run.StartedAt.ToLocalTime():yyyy-MM-dd HH:mm}  /  {report.State}";
         ResultMemo.Text = report.Overview;
-        Comparison.Text = $"기준: {report.Baseline} · 같은 조건의 공동 유효 블록만 비교합니다. 조건별 표와 평균이 다를 수 있습니다.";
+        Comparison.Text = (run.Options.Research?.Stage is "aa" or "sensitivity" ? "동일 릴리스 측정기 검증 · 제품 우열 비교 아님\n" : "") + $"기준: {report.Baseline} · 같은 조건의 공동 유효 블록만 비교합니다. 조건별 표와 평균이 다를 수 있습니다.";
         ResultExportActions.IsEnabled = operation is null; ReuseButton.IsEnabled = operation is null;
         ReportStatus.Text = "";
     }

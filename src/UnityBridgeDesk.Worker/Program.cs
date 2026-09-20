@@ -9,8 +9,39 @@ using UnityBridgeDesk.Infrastructure.Execution;
 using UnityBridgeDesk.Infrastructure.Storage;
 using UnityBridgeDesk.Infrastructure.Ai;
 
+// CLI modes and the stdin handshake share one final exception boundary. Keep failures
+// on stderr: stdout belongs to the parent/child protocol or the requested command.
+try { return await Run(args); }
+catch (OperationCanceledException error) { ReportFailure(error); return 130; }
+catch (Exception error) { ReportFailure(error); return 1; }
+
+static void ReportFailure(Exception error)
+{
+    try { Console.Error.WriteLine("Worker 실행 실패: " + error); }
+    catch (Exception outputError) when (outputError is IOException or UnauthorizedAccessException) { }
+}
+
+static async Task<int> Run(string[] args)
+{
 Console.InputEncoding = Encoding.UTF8;
 Console.OutputEncoding = new UTF8Encoding(false);
+if(args is ["--calibration-child",var calibrationDelay,var calibrationNonce])
+    return int.TryParse(calibrationDelay,out int delay) ? await UnityBridgeDesk.Infrastructure.SpeedBench.MeasurementCalibration.Child(delay,calibrationNonce) : 2;
+if(args is ["--calibrate",var calibrationOutput])
+{
+    using var calibrationStop=new CancellationTokenSource();
+    Console.CancelKeyPress+=(_,e)=>{e.Cancel=true;calibrationStop.Cancel();};
+    try
+    {
+    var diagnosticFolder=await UnityBridgeDesk.Infrastructure.SpeedBench.MeasurementCalibration.Run(Environment.ProcessPath!,calibrationOutput,new Progress<string>(Console.WriteLine),calibrationStop.Token);
+    Console.WriteLine(diagnosticFolder);
+    using var diagnostic=JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(diagnosticFolder,"diagnostic.json")));
+    return diagnostic.RootElement.GetProperty("status").GetString()=="completed" && diagnostic.RootElement.GetProperty("samples").GetInt32()==60 ? 0 : 1;
+    }
+    catch(OperationCanceledException) { Console.Error.WriteLine("실행기 진단 준비 중단"); return 130; }
+    catch(Exception error) when(error is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException or System.ComponentModel.Win32Exception)
+    { Console.Error.WriteLine("실행기 진단을 시작하지 못했습니다: " + error.Message); return 1; }
+}
 if(args is ["--compare-tools",var comparisonPath])
 {
     using var stop=new CancellationTokenSource();
@@ -140,3 +171,4 @@ try
     return 0;
 }
 catch (Exception error) { await Emit("error", error.Message); return 1; }
+}

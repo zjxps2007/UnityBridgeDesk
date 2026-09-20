@@ -24,7 +24,12 @@ public partial class SpeedBenchWindow
     private void RefreshStatistics(SpeedReport report, ReportChart chart)
     {
         var comparisons = report.Comparisons.Where(c => c.Experiment == chart.Experiment && c.Condition == chart.Condition);
-        ReplicationSummary.Text = string.Join("\n", comparisons.Select(c => $"{c.Candidate} · {c.Inference}\n{c.Planning}"));
+        ReplicationSummary.Text = SpeedResearch.PlanStatus(report.Run) + "\n" + string.Join("\n", comparisons.Select(c => $"{c.Candidate} · {c.Inference}\n{c.Planning}"));
+        ResearchResultSession.Text = SpeedResearch.PlanStatus(report.Run) + "\n" + ResearchOutcomes.SessionSummary(report.Run);
+        ResearchResultCompletion.Text = ResearchOutcomes.CompletionText(report, chart.Experiment, chart.Condition);
+        ResearchNextAction.Text = report.Trials.Any(t => !t.Included) ? "먼저 제외된 시행을 확인하세요. 성공한 자료만으로 전체 신뢰성이나 우열을 판단하지 않습니다." :
+            "다음 확인: 다른 시점·세션에서 같은 조건을 반복하고 세션별로 비교하세요. 계획·원시 기록은 위 ‘자료 내보내기’의 연구 자료 ZIP에 포함됩니다.";
+        NewResearchSessionButton.IsEnabled = operation is null;
         var advice = report.Replication.Where(r => r.Experiment == chart.Experiment && r.Condition == chart.Condition);
         ReplicationDetail.Text = string.Join("\n\n", advice.Select(r => $"{r.Release}: {r.VarianceDisplay}. {r.SequenceCheck}.\n호출 수 제안 {r.CallsDisplay} · {r.Note}"));
         var followup = SpeedStatistics.FollowupOptions(report);

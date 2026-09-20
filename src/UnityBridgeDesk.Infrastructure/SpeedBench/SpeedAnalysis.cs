@@ -17,7 +17,9 @@ public static class SpeedAnalysis
         return new SpeedSummary(g.Key.Experiment, g.Key.Variant, g.Key.Tag, g.Count(), values.Length, trials.Count(r => !IsValid(r)),
             values.Length == 0 ? null : values.Average(), median, values.Length == 0 ? null : values[0], values.Length == 0 ? null : values[^1],
             g.Key.Experiment == "F02" ? "ms/전체 작업" : "ms/호출");
-    }).ToArray();
+    }).OrderBy(s => s.Experiment, StringComparer.Ordinal).ThenBy(s => VariantOrder(s.Condition)).ThenBy(s => s.Condition, StringComparer.Ordinal)
+        .ThenBy(s => Array.FindIndex(run.Releases, r => r.Tag == s.Release)).ToArray();
+    internal static int VariantOrder(string variant) => variant == "first" ? 0 : variant == "prepared" ? 1 : int.TryParse(variant, out int n) ? n : int.MaxValue;
     public static bool IsValid(SpeedTrialResult result) => result.Status == "success" && result.ResetVerified &&
         result.Guest is { Status: "success", WorkMs: > 0 } && double.IsFinite(result.Guest.WorkMs.Value);
     public static SpeedPair[] Pairs(SpeedRun run)
@@ -40,7 +42,7 @@ public static class SpeedAnalysis
     }
     public static string Csv(SpeedRun run)
     {
-        var csv = new StringBuilder("schema,runId,trialId,block,order,release,experiment,condition,status,resetVerified,workMs,sampleIndex,sampleMs,bytes,failureKind,failureStage,sampleOutcome,sampleFailure,sampleOffsetMs,sampleError\n");
+        var csv = new StringBuilder("schema,runId,trialId,block,order,release,experiment,condition,status,resetVerified,workMs,sampleIndex,sampleMs,bytes,failureKind,failureStage,sampleOutcome,sampleFailure,sampleOffsetMs,sampleError,innerDelayMs\n");
         static string Cell(object? value) => "\"" + (Convert.ToString(value, CultureInfo.InvariantCulture) ?? "").Replace("\"", "\"\"") + "\"";
         foreach (var trial in run.Plan)
         {
@@ -50,7 +52,7 @@ public static class SpeedAnalysis
                 csv.AppendLine(string.Join(',', new object?[] { run.Schema, run.Id, trial.Id, trial.Block, trial.Order, trial.Tag, trial.Experiment, trial.Variant,
                     result?.Status ?? "not-run", result?.ResetVerified, result?.Guest?.WorkMs, sample?.Index, sample?.Milliseconds, sample?.Bytes,
                     result?.FailureKind ?? result?.Guest?.FailureKind, result?.FailureStage ?? result?.Guest?.FailureStage,
-                    sample?.Outcome, sample?.FailureKind, sample?.OffsetMs, sample?.Error }.Select(Cell)));
+                    sample?.Outcome, sample?.FailureKind, sample?.OffsetMs, sample?.Error, sample?.InnerDelayMs }.Select(Cell)));
         }
         return csv.ToString();
     }

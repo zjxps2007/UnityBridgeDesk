@@ -54,15 +54,15 @@ public sealed record ReportBlock(string Experiment, string Condition, int Block,
 }
 public sealed record ReportComparison(string Experiment, string Condition, string Candidate, int Planned, int Valid,
     double? BaselineMs, double? CandidateMs, double? ReductionPercent, string Unit,
-    EffectInterval? Evidence = null, bool CompleteRun = true)
+    EffectInterval? Evidence = null, bool CompleteRun = true, string? ValidationAssessment = null)
 {
     public string Change => ReductionPercent is not { } value ? "비교 불가" :
         Math.Abs(value) < .05 ? "표시 정밀도 내 동일" : $"시간 {Math.Abs(value).ToString("F1", CultureInfo.InvariantCulture)}% {(value > 0 ? "감소" : "증가")}";
     public string Blocks => $"{Valid}/{Planned}";
     public string ConfidenceRange => Evidence?.Display ?? "미평가";
-    public string Inference => !CompleteRun ? "미완료 결과 · 판단 유보" : Valid < Planned ? "제외 있음 · 성공쌍에 한정" : Evidence?.Interpretation ?? "판단 유보";
-    public bool CanPlan => CompleteRun && Valid == Planned && Evidence is { Count: >= SpeedStatistics.MinimumTrials, SuggestedBlocks: >= 5 and <= 100, SequenceWarning: false };
-    public string Planning => !CompleteRun ? "미완료 실행으로 다음 반복 수를 권장하지 않습니다." :
+    public string Inference => ValidationAssessment ?? (!CompleteRun ? "미완료 결과 · 판단 유보" : Valid < Planned ? "제외 있음 · 성공쌍에 한정" : Evidence?.Interpretation ?? "판단 유보");
+    public bool CanPlan => ValidationAssessment is null && CompleteRun && Valid == Planned && Evidence is { Count: >= SpeedStatistics.MinimumTrials, SuggestedBlocks: >= 5 and <= 100, SequenceWarning: false };
+    public string Planning => ValidationAssessment is not null ? "측정기 진단은 제품 속도 순위가 아닙니다. 실제 내부 시간·허용 차이·시행 순서·다른 세션을 확인하세요." : !CompleteRun ? "미완료 실행으로 다음 반복 수를 권장하지 않습니다." :
         Valid < Planned ? $"제외 {Planned - Valid}쌍의 원인을 확인한 뒤 예비 측정을 보강하세요." :
         Evidence?.Status == "insufficient" ? $"유효 {Valid}/5쌍 · 예비 측정을 보강해야 반복 수를 추정할 수 있습니다." :
         Evidence?.SequenceWarning == true ? "시행 순서에 따른 추세를 확인하고 환경·실험 계획을 재검토하세요." :
@@ -109,7 +109,8 @@ public sealed class SpeedReport
     public string ToolCleanupNote => string.Join("\n", new[] { OfficialCleanupNote, GoCleanupNote }.Where(s => s.Length > 0));
     public string GoMeasurementNote => Run.Releases.Any(r => r.GoUnity is not null)
         ? "Go unity-cli는 비공식 도구이며 자체 Connector를 사용한다. 명령별 작업·검증 기준은 공유한다. Go exec는 동일 C#을 표준입력으로, Bridge·Pipeline은 파일로 전달하므로 입력·출력·컴파일러를 포함한 도구 전체 경로 비교이다. Go CLI는 시험 전용 홈의 대상 정보 사본과 매 측정 묶음 직전 준비한 업데이트 확인 캐시를 사용하며, 실제 연결·버전 확인과 재시도는 측정에 포함한다. 캐시는 원본 CLI의 1시간 정책을 따르므로 1시간을 넘는 묶음은 업데이트 조회가 다시 발생할 수 있다." : "";
-    public string Overview => Counts + "\n" + $"정리 확인 {Trials.Count(t => t.Result?.ResetVerified == true)}/{Run.Results.Length} · 통계 포함 {Valid}/{Trials.Length}\n" +
+    public string ResearchSummary => SpeedResearch.Summary(this);
+    public string Overview => (Run.ResearchPlan is null ? "" : SpeedResearch.PlanStatus(Run) + "\n") + Counts + "\n" + $"정리 확인 {Trials.Count(t => t.Result?.ResetVerified == true)}/{Run.Results.Length} · 통계 포함 {Valid}/{Trials.Length}\n" +
         (ToolCleanupNote.Length == 0 ? "" : ToolCleanupNote + "\n") +
         Context + (Trials.Any(t => t.Result is not null && !t.Included) ?
             "\n확인할 시행: " + string.Join(" / ", Trials.Where(t => t.Result is not null && !t.Included).Take(3).Select(t => $"#{t.Order} {t.Release} {t.Experiment} {t.Condition}")) : "");
@@ -151,6 +152,9 @@ public sealed class SpeedReport
             return new ReportComparison(g.Key.Experiment, g.Key.Condition, g.Key.Candidate, g.Count(), valid.Length,
                 a, b, a.HasValue ? 100 * (1 - b / a) : null, Unit(g.Key.Experiment), SpeedStatistics.Compare(g), run.Status == "completed");
         }).ToArray();
+        Comparisons = Comparisons.OrderBy(c => Array.FindIndex(Summaries, s => s.Experiment == c.Experiment && s.Condition == c.Condition))
+            .ThenBy(c => Array.FindIndex(run.Releases, r => r.Tag == c.Candidate)).ToArray();
+        if (run.Options.Research?.Stage is "aa" or "sensitivity") Comparisons = Comparisons.Select(c => c with { ValidationAssessment = SpeedResearch.Assessment(this, c) }).ToArray();
         Stability = SpeedStability.Summaries(this);
         Replication = SpeedStatistics.Replications(run);
     }
@@ -178,6 +182,7 @@ public sealed class SpeedReport
     public string ConditionMemo(string experiment, string condition)
     {
         var comparisons = Comparisons.Where(c => c.Experiment == experiment && c.Condition == condition).ToArray();
+        if (Run.Options.Research?.Stage is "aa" or "sensitivity") return string.Join("\n", comparisons.Select(c => $"{c.Candidate}: {SpeedResearch.Assessment(this, c)} · 시간비 구간에 대응한 감소율 {c.ConfidenceRange}"));
         if (comparisons.All(c => c.Valid == 0)) return "비교할 유효 결과 없음 · 시행 상세에서 제외 이유를 확인하세요.";
         return string.Join("\n", comparisons.Select(c => c.Valid == 0 ? $"{c.Candidate}: 비교할 유효 결과 없음" :
             $"{c.Candidate} · 기준 {Baseline}보다 평균 완료 시간 {c.Change.Replace("시간 ", "")} · 비교 {c.Valid}쌍 / 제외 {c.Planned - c.Valid}쌍\n감소율 95% 구간 {c.ConfidenceRange} · {c.Inference}")) +
@@ -193,6 +198,7 @@ public sealed class SpeedReport
     public string ComparisonMemo(ReportComparison comparison)
     {
         string label = $"{comparison.Experiment} {comparison.Condition}";
+        if (Run.Options.Research?.Stage is "aa" or "sensitivity") return $"{label}: {SpeedResearch.Assessment(this, comparison)}. 감소율 95% 구간 {comparison.ConfidenceRange}. 제품 우열 판정이 아니다.";
         string scope = comparison.Experiment == "F02" ? "전체 작업당" : "호출당";
         string pairs = $"공동 유효 {comparison.Blocks}블록";
         if (comparison.Valid == 0 || comparison.BaselineMs is not { } a || comparison.CandidateMs is not { } b ||

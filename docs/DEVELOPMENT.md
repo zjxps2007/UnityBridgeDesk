@@ -44,7 +44,7 @@ v0.4.0에서 `SpeedExec`는 고정 C# 입력과 해시, `SpeedStress`는 시나�
 
 v0.5.0의 `SpeedStatistics`는 시행 단위 평균 t 구간, 공분산을 포함한 쌍 Fieller 구간, 두 수준의 분산·비용과 다음 실험 반복 수를 계산합니다. WPF와 TXT·Excel은 같은 `SpeedReport`를 사용하며 사전 실행 시간은 별도 nullable 필드에 기록합니다. [수식과 전제](STATISTICAL-METHODOLOGY.md)를 따릅니다.
 
-전체 검사는 [v0.5.0 검증 기록](V050-VALIDATION.md)에 별도로 정리합니다. 실험 선택과 호출 판정 필드는 기존 로컬 스키마에 추가하며 과거 기록의 nullable 필드를 허용합니다. 읽기용 보고서는 형식 10으로 구분하며 과거 보고서는 새 사본을 만듭니다.
+전체 검사는 [v0.5.0 검증 기록](V050-VALIDATION.md), 후속 연구 기능은 [연구용 검증 안내](RESEARCH-VALIDATION.md)에 정리합니다. 실험 선택과 호출 판정 필드는 기존 로컬 스키마에 추가하며 과거 기록의 nullable 필드를 허용합니다. 읽기용 보고서는 형식 11로 구분하며 과거 보고서는 새 사본을 만듭니다.
 
 공식 도구의 다운로드 원본은 `OfficialToolWorkspace`가 `speed/official-work/<ID>`에서 소유합니다. `LocalWorkspace`의 경로·소유·종료 확인과 삭제 저널을 공유하고, 실제 명령은 별도 시행 폴더의 복사본으로 실행합니다. `SpeedBenchWorkflow.Run`의 finally에서 다운로드 원본까지 정리한 뒤 `OfficialCleanup`을 저장합니다. 준비 실패·취소·창 종료도 같은 정리를 호출하며 미리 준비한 파일은 이번 벤치 전까지 보관합니다. 공식 CLI 자식 프로세스만 `cli-profile` 환경을 사용하고 Editor의 라이선스 경로는 바꾸지 않습니다.
 

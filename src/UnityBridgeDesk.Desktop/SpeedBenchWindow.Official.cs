@@ -7,7 +7,7 @@ namespace UnityBridgeDesk.Desktop;
 public partial class SpeedBenchWindow
 {
     private bool applyingOfficial;
-    private int SelectedTargetCount => Selected().Length + (IncludeOfficial.IsChecked == true ? 1 : 0) + (IncludeGo.IsChecked == true ? 1 : 0);
+    private int SelectedTargetCount => IsAa ? 2 : Selected().Length + (IncludeOfficial.IsChecked == true ? 1 : 0) + (IncludeGo.IsChecked == true ? 1 : 0);
     private GoUnitySelection? ReadGoSelection() => IncludeGo.IsChecked == true ? new(GoVersion.Text.Trim()) : null;
     private OfficialUnitySelection? ReadOfficialSelection() => IncludeOfficial.IsChecked == true
         ? new(string.IsNullOrWhiteSpace(OfficialCliVersion.Text) ? null : OfficialCliVersion.Text.Trim(),

@@ -82,7 +82,9 @@ public sealed class WorkerRunner(string workerPath) : IProcessRunner
             finally { job.Dispose(); }
             try { if (worker.Id != 0) await worker.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10)); }
             catch (InvalidOperationException) { }
-            if (diagnostic is not null) { try { await diagnostic; } catch (OperationCanceledException) { } }
+            // Startup failures may happen before a framed message can be emitted.
+            // Preserve stderr so a missing exit frame still carries its actual cause.
+            if (diagnostic is not null) { try { error.Append(await diagnostic); } catch (OperationCanceledException) { } }
         }
         if (cancellationToken.IsCancellationRequested) outcome = ProcessOutcome.Cancelled;
         return new(outcome, exit, output.ToString(), error.ToString(), clock.Elapsed.TotalMilliseconds, pid, started);

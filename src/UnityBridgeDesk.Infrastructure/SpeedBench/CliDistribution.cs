@@ -69,7 +69,7 @@ public static class CliDistribution
         return Convert.ToHexStringLower(hash.GetHashAndReset());
     }
     public static string ReportedConnectorVersion(SpeedRelease release) =>
-        release.Tag == "v0.2.2-rc.1" && release.Version == "0.2.2-rc.1" && release.Commit == "74639d7b3f3adf550d58cc853b715f878153839f"
+        (release.SourceTag ?? release.Tag) == "v0.2.2-rc.1" && release.Version == "0.2.2-rc.1" && release.Commit == "74639d7b3f3adf550d58cc853b715f878153839f"
             ? "0.2.1" : release.Version;
     public static string? CompatibilityNote(SpeedRelease release) => ReportedConnectorVersion(release) == release.Version ? null :
         "RC1 공식 패키지의 보고 오류: 설치 버전은 0.2.2-rc.1, Connector 보고 값은 0.2.1입니다. 커밋과 패키지 해시로 설치본을 확인합니다.";

@@ -144,8 +144,12 @@ public sealed class SpeedCoordinator(string dataRoot, VirtualBoxHost host)
             result.Schema != schema || result.CliSha256 != request.CliSha256 || result.ConnectorSha256 != request.ConnectorSha256 ||
             result.FixtureSha256 != request.FixtureSha256 || result.CliTreeSha256 != request.CliTreeSha256 || result.GuestPid <= 0 || result.ClockFrequency <= 0 ||
             result.Status is not ("success" or "failed" or "cancelled")) throw new IOException("다른 시행이거나 불완전한 게스트 결과입니다.");
+        if (request.Options.Research?.Stage == "sensitivity" && result.Status == "success" &&
+            result.Samples.Any(s => s.InnerDelayMs is null || (request.Trial.Tag.EndsWith(" [B]", StringComparison.Ordinal) ? s.InnerDelayMs < 90 : s.InnerDelayMs != 0)))
+            throw new IOException("지연 대조의 내부 시간 기록이 누락되거나 조건과 다릅니다.");
         if (result.Samples.Any(s => s is null || !double.IsFinite(s.Milliseconds) || s.Milliseconds < 0 || s.Bytes < 0 || s.Index < 0 ||
                 s.OffsetMs is { } offset && (!double.IsFinite(offset) || offset < 0) ||
+                s.InnerDelayMs is { } inner && (!double.IsFinite(inner) || inner < 0 || inner > s.Milliseconds) ||
                 s.Outcome is not (null or "unverified" or "success" or "failed")) ||
             result.Samples.Select(s => s.Index).Distinct().Count() != result.Samples.Length ||
             result.MeasurementMs is { } measured && (!double.IsFinite(measured) || measured < 0) ||

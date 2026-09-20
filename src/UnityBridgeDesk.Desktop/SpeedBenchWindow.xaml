@@ -376,6 +376,11 @@
           <StackPanel x:Name="PreparationOptions" Grid.Column="1" Margin="36,0,0,0">
            <Border Style="{StaticResource Card}">
             <StackPanel x:Name="ExperimentSection">
+             <TextBlock Text="실험 목적" Style="{StaticResource Heading}" />
+             <ComboBox x:Name="ResearchStage" SelectedIndex="0" SelectionChanged="ResearchChanged" AutomationProperties.Name="실험 목적">
+              <ComboBoxItem Content="버전 속도 비교 · 탐색" /><ComboBoxItem Content="반복 수를 정할 예비 실험" /><ComboBoxItem Content="계획을 고정한 본시험" /><ComboBoxItem Content="같은 릴리스 검증 · A/A" /><ComboBoxItem Content="알려진 지연 감지 · +100ms" />
+             </ComboBox>
+             <TextBlock x:Name="ResearchPurposeHint" TextWrapping="Wrap" Foreground="{DynamicResource Muted}" Margin="0,6,0,12" FontSize="12" />
              <DockPanel>
               <TextBlock Text="측정할 작업" Style="{StaticResource Heading}" />
              </DockPanel>
@@ -424,9 +429,37 @@
               <Button Content="반복 설계용 예비 설정" Click="StatisticalPilotClicked" Style="{StaticResource QuietButton}" Margin="0,0,0,6" />
              </WrapPanel>
              <TextBlock Text="예비 설정: 새 프로젝트 20회 · 사전 실행 5회 · 측정 20회. 자동 실행하지 않습니다. 준비 시간이 커질 수 있으며, 사전 실행의 충분성은 호출 순서로 확인하세요." Style="{StaticResource Hint}" FontSize="12" />
+             <Expander x:Name="ResearchExpander" Header="연구 계획·세션 기록">
+              <StackPanel Margin="0,8,0,8">
+               <TextBlock x:Name="ResearchQuestionLabel" Text="연구 질문 (선택)" />
+               <TextBox x:Name="ResearchQuestion" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64" MaxHeight="120" MaxLength="2000" VerticalScrollBarVisibility="Auto" TextChanged="ResearchChanged" AutomationProperties.Name="연구 질문과 판단 기준" />
+               <TextBlock x:Name="ResearchQuestionHint" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource Muted}" Margin="0,4,0,8" />
+               <StackPanel x:Name="ResearchAaOptions" Visibility="Collapsed">
+                <TextBlock Text="같은 것으로 볼 시간비의 허용 차이 (%)" />
+                <TextBox x:Name="ResearchTolerance" Text="1" Width="120" HorizontalAlignment="Left" TextChanged="ResearchChanged" AutomationProperties.Name="A/A 시간비 허용 차이 퍼센트" />
+                <TextBlock Text="1%는 예시입니다. 위 질문에 허용 폭의 이유를 적으세요. 95% 구간 전체가 이 범위 안에 있는지 확인합니다." Style="{StaticResource Hint}" FontSize="12" />
+               </StackPanel>
+               <TextBlock x:Name="ResearchInputError" TextWrapping="Wrap" Foreground="#9E344D" FontSize="12" Margin="0,2,0,8" AutomationProperties.LiveSetting="Polite"><TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed" /></Trigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
+               <TextBlock Text="연구 묶음 (선택)" />
+               <TextBox x:Name="ResearchStudyGroup" MaxLength="120" TextChanged="ResearchChanged" AutomationProperties.Name="여러 세션을 찾기 위한 연구 묶음" />
+               <TextBlock Text="같은 연구는 같은 이름으로 기록합니다. 세션 ID는 실행마다 자동 생성하며 결과를 자동 합산하지 않습니다." Style="{StaticResource Hint}" FontSize="12" />
+               <TextBlock Text="이번 세션 메모 (선택)" />
+               <TextBox x:Name="ResearchSessionNote" MaxLength="300" TextWrapping="Wrap" MinHeight="36" TextChanged="ResearchChanged" AutomationProperties.Name="이번 세션의 환경이나 변경 사항" />
+               <CheckBox x:Name="ResearchQuiet" Margin="0,10,0,4" Checked="ResearchChanged" Unchecked="ResearchChanged"><TextBlock Text="실행 중 상세 화면 갱신 줄이기" TextWrapping="Wrap" /></CheckBox>
+               <TextBlock Text="진행·중단·정리 결과는 유지합니다. 시작 전에 질문·설정·순서·파일 해시를 저장합니다. 외부 사전등록은 별도입니다." Style="{StaticResource Hint}" FontSize="12" />
+              </StackPanel>
+             </Expander>
+             <Expander Header="Unity 없이 실행기 진단">
+              <StackPanel Margin="0,8,0,8">
+               <TextBlock Text="자식 프로세스에 0·25·100ms 대기를 넣어 60회 비교합니다. 실제 Unity·CLI 경로를 검증하려면 위 목적에서 A/A 또는 지연 감지를 선택하세요." Style="{StaticResource Hint}" FontSize="12" />
+               <Button Content="실행기 진단 시작 · 60회" Click="CalibrateClicked" Style="{StaticResource QuietButton}" HorizontalAlignment="Left" Margin="0,4,0,8" />
+               <TextBlock x:Name="CalibrationStatus" Text="아직 실행하지 않았습니다." TextWrapping="Wrap" FontSize="12" AutomationProperties.LiveSetting="Polite" />
+               <Button x:Name="CalibrationResultButton" Content="진단 요약 열기" Click="OpenCalibrationClicked" Style="{StaticResource QuietButton}" HorizontalAlignment="Left" Visibility="Collapsed" Margin="0,8,0,0" />
+              </StackPanel>
+             </Expander>
              <Expander Header="부하 설정" IsEnabled="{Binding IsChecked, ElementName=S01}">
               <StackPanel Margin="0,8,0,10">
-               <TextBlock Text="같은 Unity에 여러 CLI 요청을 동시에 전달합니다. Unity 내부의 병렬 실행을 뜻하지 않습니다." Style="{StaticResource Hint}" />
+               <TextBlock Text="각 요청이 끝나면 다음 요청을 보내는 고정 동시성 시험입니다. 일정한 도착률에서의 대기 시간이나 Unity 내부의 병렬 실행을 뜻하지 않습니다." Style="{StaticResource Hint}" />
                <WrapPanel>
                 <StackPanel Width="140" Margin="0,0,12,8">
                  <TextBlock Text="명령당 요청 수" />
@@ -477,7 +510,7 @@
                </StackPanel>
               </WrapPanel>
              </Expander>
-             <TextBlock Text="예비 시험(Pilot) · 반복 호출을 독립 시행으로 세지 않으며 작은 표본으로 승자를 판정하지 않습니다." Style="{StaticResource Hint}" />
+             <TextBlock Text="반복 호출을 독립 시행으로 세지 않으며 작은 표본으로 승자를 판정하지 않습니다. 연구 목적에 필요한 설정은 위에서 선택하세요." Style="{StaticResource Hint}" />
              <Button x:Name="ResetButton" Content="벤치 설정 초기화" Click="ResetClicked" Style="{StaticResource QuietButton}" HorizontalAlignment="Left" Margin="0,6,0,0" />
             </StackPanel>
            </Border>
@@ -546,6 +579,7 @@
               <MenuItem Header="비교 요약 복사" Click="CopySummaryClicked" />
               <Separator Style="{StaticResource ActionSeparator}" />
               <MenuItem Header="분석 Excel 열기" Click="ExcelClicked" />
+              <MenuItem Header="연구 자료 ZIP 저장…" Click="ExportResearchClicked" />
               <MenuItem x:Name="ExportCurrentChart" Header="현재 그래프 SVG 저장…" Click="ExportChartClicked" />
               <Separator Style="{StaticResource ActionSeparator}" />
               <MenuItem Header="보고서 폴더 열기" Click="ResultsFolderClicked" />
@@ -638,6 +672,14 @@
                <DataGridTextColumn ElementStyle="{StaticResource ReportCellText}" Header="평균 95% 구간(ms)" Binding="{Binding ConfidenceRange}" />
               </DataGrid.Columns>
              </DataGrid>
+            </StackPanel>
+           </Expander>
+           <Expander x:Name="ResearchResultsExpander" Header="시행 포함 범위·연구 기록" Margin="0,4,0,6">
+            <StackPanel Margin="0,8,0,4">
+             <TextBlock x:Name="ResearchResultSession" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource Muted}" />
+             <TextBlock x:Name="ResearchResultCompletion" TextWrapping="Wrap" LineHeight="21" Margin="0,8,0,8" />
+             <TextBlock x:Name="ResearchNextAction" TextWrapping="Wrap" FontSize="12" Margin="0,0,0,8" />
+             <Button x:Name="NewResearchSessionButton" Content="같은 조건으로 새 세션 준비" Click="NewResearchSessionClicked" Style="{StaticResource QuietButton}" HorizontalAlignment="Left" />
             </StackPanel>
            </Expander>
            <Expander Header="측정 조건과 해석" Margin="0,6,0,0">

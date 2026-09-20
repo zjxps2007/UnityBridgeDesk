@@ -11,7 +11,7 @@ public sealed record OfficialUnitySelection(string? CliVersion = null, string? P
 public interface ISpeedBenchWorkflow
 {
     Task<SpeedRelease[]> Prepare(string editor, ReleaseChoice[] choices, OfficialUnitySelection? official, string? baseline,
-        IProgress<string>? progress, CancellationToken ct, GoUnitySelection? go = null);
+        IProgress<string>? progress, CancellationToken ct, GoUnitySelection? go = null, bool aa = false);
     Task<SpeedRun> Run(string editor, SpeedRelease[] releases, SpeedOptions options, IProgress<string>? progress,
         IProgress<SpeedLiveProgress>? live, CancellationToken ct);
     Task Cleanup();
@@ -24,8 +24,13 @@ public sealed class SpeedBenchWorkflow(string dataRoot, string workerDirectory) 
     private OfficialToolWorkspace? officialWorkspace;
     private GoToolWorkspace? goWorkspace;
     private bool officialUsed;
-    public static void ValidateSelection(int bridgeCount, bool official, bool go = false)
+    public static void ValidateSelection(int bridgeCount, bool official, bool go = false, bool aa = false)
     {
+        if (aa)
+        {
+            if (bridgeCount != 1 || official || go) throw new ArgumentException("A/A 검증은 UnityBridge 릴리스 1개만 선택하세요. 공식·Go 비교는 꺼 주세요.");
+            return;
+        }
         if (go)
         {
             if (bridgeCount < 0 || bridgeCount + (official ? 1 : 0) + 1 is < 2 or > 8)
@@ -36,12 +41,12 @@ public sealed class SpeedBenchWorkflow(string dataRoot, string workerDirectory) 
             throw new ArgumentException(official ? "공식 Unity와 비교할 UnityBridge 버전을 1~7개 선택하세요." : "비교할 UnityBridge 버전을 2~8개 선택하세요.");
     }
     public async Task<SpeedRelease[]> Prepare(string editor, ReleaseChoice[] choices, OfficialUnitySelection? official, string? baseline,
-        IProgress<string>? progress, CancellationToken ct, GoUnitySelection? go = null)
+        IProgress<string>? progress, CancellationToken ct, GoUnitySelection? go = null, bool aa = false)
     {
         try
         {
         if (officialUsed) await Cleanup();
-        ValidateSelection(choices.Length, official is not null, go is not null); official?.Validate(); go?.Validate();
+        ValidateSelection(choices.Length, official is not null, go is not null, aa); official?.Validate(); go?.Validate();
         var environment = await LocalSpeedCoordinator.InspectEditor(editor, ct);
         if ((official is not null || go is not null) && !environment.EditorVersion.StartsWith("6000.", StringComparison.Ordinal))
             throw new ArgumentException("공식 Unity·Go CLI 비교에는 설치·활성화된 Unity 6가 필요합니다.");
@@ -59,6 +64,7 @@ public sealed class SpeedBenchWorkflow(string dataRoot, string workerDirectory) 
             releases.Add(await goWorkspace.Prepare(go, progress, ct, editor: editor));
         }
         else if (goWorkspace is not null) { await goWorkspace.DisposeAsync(); goWorkspace = null; }
+        if (aa) return SpeedResearch.AaTargets(releases.Single());
         return releases.OrderBy(r => r.Tag == baseline || r.OfficialUnity is not null && baseline == OfficialLabel || r.GoUnity is not null && baseline == GoLabel ? 0 : 1).ToArray();
         }
         catch { await Cleanup(); throw; }

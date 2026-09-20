@@ -92,6 +92,14 @@ public partial class SpeedBenchWindow
         ConditionCoverage.Text = $"선택 조건 · 통계 포함 {valid}/{planned}회 · 제외 {planned - valid}회";
         InspectFailuresButton.Content = $"제외 {planned - valid}회 확인";
         InsightLabel.Text = stability ? "선택 조건의 유효 완료" : "기준 " + report.Baseline;
+        if (report.Run.Options.Research?.Stage is "aa" or "sensitivity")
+        {
+            InsightLabel.Text = "동일 릴리스 측정기 검증";
+            InsightValue.Text = report.Run.Options.Research?.Stage == "sensitivity" ? "추가 지연의 전달 확인" : "A/A 허용 차이 확인";
+            InsightDetail.Text = string.Join("\n", comparisons.Select(c => c.Inference));
+            InsightDetail.ToolTip = "같은 바이너리를 두 대상으로 실행한 결과입니다. 제품 간 속도 우열이나 벤치마크 인증을 뜻하지 않습니다.";
+            return;
+        }
         if (stability)
         {
             // Keep evaluation denominators consistent with the chart; cancellation and environment errors are excluded.

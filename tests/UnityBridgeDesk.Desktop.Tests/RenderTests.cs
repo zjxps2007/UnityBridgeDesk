@@ -807,7 +807,7 @@ public sealed class RenderTests
         public GoUnitySelection? GoSelection;
         public string? Baseline;
         public SpeedRun? Result;
-        public async Task<SpeedRelease[]> Prepare(string editor, ReleaseChoice[] choices, OfficialUnitySelection? official, string? baseline, IProgress<string>? progress, CancellationToken ct, GoUnitySelection? go = null)
+        public async Task<SpeedRelease[]> Prepare(string editor, ReleaseChoice[] choices, OfficialUnitySelection? official, string? baseline, IProgress<string>? progress, CancellationToken ct, GoUnitySelection? go = null, bool aa = false)
         {
             PrepareCount++; Selection = official; GoSelection = go; Baseline = baseline;
             if (WaitForCancellation)
@@ -960,8 +960,12 @@ public sealed class RenderTests
         warmups.Text="1";
         Assert.IsNull(window.FindName("GuestPassword")); Assert.IsNull(window.FindName("VmList"));
         var repeats=(TextBox)window.FindName("Repeats");repeats.Text="invalid";
+        var researchQuestion=(TextBox)window.FindName("ResearchQuestion");researchQuestion.Text="초기화 전 연구 질문";
+        var researchTolerance=(TextBox)window.FindName("ResearchTolerance");researchTolerance.Text="invalid";
         var reset=(Button)window.FindName("ResetButton");reset.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));PumpUntil(()=>form.IsEnabled);
-        Assert.AreEqual("2",repeats.Text);reset.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));PumpUntil(()=>form.IsEnabled);
+        Assert.AreEqual("2",repeats.Text);Assert.AreEqual("",researchQuestion.Text);Assert.AreEqual("1",researchTolerance.Text);
+        reset.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));PumpUntil(()=>form.IsEnabled);
+        Assert.AreEqual("초기화 전 연구 질문",researchQuestion.Text);Assert.AreEqual("invalid",researchTolerance.Text);researchTolerance.Text="1";
         Assert.AreEqual("invalid",repeats.Text);
         Assert.AreEqual(Visibility.Visible,((TextBlock)window.FindName("RepeatsError")).Visibility);
         ((RadioButton)((WrapPanel)window.FindName("ResultNavigation")).Children[0]).IsChecked=true;
@@ -1076,6 +1080,7 @@ public sealed class RenderTests
         ((RadioButton)((WrapPanel)window.FindName("ResultNavigation")).Children[0]).IsChecked=true;
         NavigationRenderChecks.Verify(window, content, reportRun, directory);
         MethodologyRenderChecks.Verify(window, content, reportRun, directory);
+        ResearchRenderChecks.Verify(window, content, directory);
         // WPF popup input needs a native owner; keep the fixture window invisible and off screen.
         window.ShowInTaskbar=false;window.ShowActivated=false;window.Opacity=0;
         window.WindowStartupLocation=WindowStartupLocation.Manual;window.Left=-30000;window.Top=-30000;

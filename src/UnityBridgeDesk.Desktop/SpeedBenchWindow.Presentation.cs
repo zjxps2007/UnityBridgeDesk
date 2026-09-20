@@ -18,13 +18,13 @@ public partial class SpeedBenchWindow
 
     private void UpdatePreparation()
     {
-        if (PlanSummary is null || ReleaseList is null || StressScenarios is null || OfficialPipelineVersion is null || GoVersion is null || applyingOfficial) return;
-        UpdateBaseline(); UpdateNumberInputs(); UpdateTargetRows(); StartButton.IsEnabled = false;
+        if (PlanSummary is null || ReleaseList is null || StressScenarios is null || OfficialPipelineVersion is null || GoVersion is null || applyingOfficial || applyingResearch || ResearchTolerance is null) return;
+        UpdateResearchFields(); UpdateBaseline(); UpdateNumberInputs(); UpdateTargetRows(); StartButton.IsEnabled = false;
         int releases = SelectedTargetCount;
         var official = ReadOfficialSelection(); var go = ReadGoSelection();
         OfficialSection.Visibility = official is null ? Visibility.Collapsed : Visibility.Visible;
         GoSection.Visibility = go is null ? Visibility.Collapsed : Visibility.Visible;
-        ReleaseHint.Text = official is null && go is null ? "UnityBridge 2~8개를 선택하세요. 필요한 파일은 시작할 때 자동으로 준비합니다." :
+        ReleaseHint.Text = IsAa ? "UnityBridge 1개만 선택하세요. 같은 바이너리를 두 대상에서 독립 실행합니다." : official is null && go is null ? "UnityBridge 2~8개를 선택하세요. 필요한 파일은 시작할 때 자동으로 준비합니다." :
             "전체 비교 대상 2~8개를 선택하세요. 공식·Go 도구는 임시 준비하고 벤치 종료 후 삭제합니다.";
         OfficialStatus.Text = official is null ? "" : $"Unity CLI {official.CliVersion ?? "자동"} · Pipeline {official.PipelineVersion ?? "자동"} · Unity 6 사용";
         try
@@ -32,13 +32,14 @@ public partial class SpeedBenchWindow
             var options = ReadOptions();
             int conditions = SpeedProtocol.Cases(options).Length;
             int trials = releases * conditions * options.Repeats;
-            PlanSummary.Text = $"{releases}개 버전 · {conditions}개 조건 · {trials}회 시행";
+            PlanSummary.Text = $"{releases}개 {(IsAa ? "대상 (동일 릴리스 A/B)" : "버전")} · {conditions}개 조건 · {trials}회 시행";
             MeasurementPlan.Text = $"조건·버전마다 새 프로젝트 {options.Repeats}회 실험. " +
                 (options.Selected.Any(x => x is "F01" or "F03" or "F04") ? $"반복 평균: 실험마다 사전 실행 {options.Warmups}회 제외, 명령 {options.Calls}회 측정.\n" : "\n") +
                 (options.Selected.Any(x => x is "F01" or "F04") ? "첫 명령: 별도 새 프로젝트에서 사전 실행 없이 1회 측정. " : "") +
                 "Unity 시작·컴파일 시간은 명령 시간에서 제외합니다." +
                 (options.Repeats < SpeedStatistics.MinimumTrials ? "\n5회 미만은 빠른 확인용입니다. 신뢰구간과 반복 수 추정은 제공하지 않습니다." : "");
-            SpeedBenchWorkflow.ValidateSelection(Selected().Length, official is not null, go is not null); official?.Validate(); go?.Validate();
+            SpeedBenchWorkflow.ValidateSelection(Selected().Length, official is not null, go is not null, IsAa);
+            if (options.Research?.Stage is "confirmatory" or "aa" or "sensitivity" && options.Repeats % releases != 0) throw new ArgumentException("실험 횟수는 대상 수의 배수로 설정하세요."); official?.Validate(); go?.Validate();
             if (EditorList.SelectedItem is not LocalCandidate editor) PlanHint.Text = "설치·활성화된 Unity를 선택하세요.";
             else if ((official is not null || go is not null) && editor.Version?.StartsWith("6000.", StringComparison.Ordinal) != true)
                 PlanHint.Text = "공식 Unity·Go CLI 비교에는 Unity 6가 필요합니다. Unity 환경에서 선택해 주세요.";
@@ -92,6 +93,7 @@ public partial class SpeedBenchWindow
     {
         // Delayed UI messages from a finished run must never revive its running state.
         if (!benchmarkActive) return;
+        if (settings.Options?.Research?.QuietProgress == true && progress.Stage is SpeedLiveStage.Unity or SpeedLiveStage.Measurement) return;
         UpdateLiveIndex(progress);
         Activity.Maximum = Math.Max(1, progress.Total); Activity.Value = progress.Completed;
         ProgressCount.Text = $"{progress.Completed} / {progress.Total}";

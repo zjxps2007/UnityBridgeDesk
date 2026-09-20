@@ -140,8 +140,8 @@ public partial class SpeedBenchWindow
         {
             var official = run.Releases.FirstOrDefault(r => r.OfficialUnity is not null)?.OfficialUnity;
             var go = run.Releases.FirstOrDefault(r => r.GoUnity is not null)?.GoUnity;
-            settings = settings with { Options = options, SelectedTags = run.Releases.Where(r => r.OfficialUnity is null && r.GoUnity is null).Select(r => r.Tag).ToArray(),
-                BaselineTag = run.Releases.FirstOrDefault()?.GoUnity is not null ? SpeedBenchWorkflow.GoLabel : run.Releases.FirstOrDefault()?.OfficialUnity is not null ? SpeedBenchWorkflow.OfficialLabel : run.Releases.FirstOrDefault()?.Tag,
+            settings = settings with { Options = options, SelectedTags = run.Releases.Where(r => r.OfficialUnity is null && r.GoUnity is null).Select(r => r.SourceTag ?? r.Tag).Distinct().ToArray(),
+                BaselineTag = run.Releases.FirstOrDefault()?.GoUnity is not null ? SpeedBenchWorkflow.GoLabel : run.Releases.FirstOrDefault()?.OfficialUnity is not null ? SpeedBenchWorkflow.OfficialLabel : run.Releases.FirstOrDefault()?.SourceTag ?? run.Releases.FirstOrDefault()?.Tag,
                 EditorPath = run.Local?.EditorPath ?? settings.EditorPath,
                 OfficialUnity = official is null ? null : new(official.CliVersion, official.PipelineVersion), GoUnity = go is null ? null : new(go.CliVersion) };
             ApplyOfficialSelection(); ApplyOptions(options); undoInputs = null; undoExperiments = null; ResetButton.Content = "벤치 설정 초기화";
@@ -150,7 +150,7 @@ public partial class SpeedBenchWindow
             BaselineList.SelectedItem = settings.BaselineTag;
             await FindEditors(ct); await Save(ct, true);
             Tabs.SelectedIndex = 0; Log("기록의 실험 조건을 준비 탭에 불러왔습니다. 입력을 확인한 뒤 벤치 시작을 누르세요.");
-            string[] missing = run.Releases.Where(r => r.OfficialUnity is null && r.GoUnity is null && !Selected().Any(s => s.Tag == r.Tag)).Select(r => r.Tag).ToArray();
+            string[] missing = run.Releases.Where(r => r.OfficialUnity is null && r.GoUnity is null && !Selected().Any(s => s.Tag == (r.SourceTag ?? r.Tag))).Select(r => r.SourceTag ?? r.Tag).Distinct().ToArray();
             if (missing.Length > 0) ReleaseStatus.Text = "목록에 없는 버전: " + string.Join(", ", missing) + " · 릴리스 새로 확인이 필요합니다.";
         });
     }

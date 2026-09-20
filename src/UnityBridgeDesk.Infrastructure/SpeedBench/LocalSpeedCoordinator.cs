@@ -23,6 +23,7 @@ public sealed class LocalSpeedCoordinator(string dataRoot, IProcessRunner runner
         IProgress<string>? progress, CancellationToken ct, IProgress<SpeedLiveProgress>? live = null, ToolWorkspaceCleanup? officialCleanup = null, ToolWorkspaceCleanup? goCleanup = null)
     {
         options.Validate();
+        SpeedResearch.ValidateTargets(options, releases);
         if (options.Selected.Contains("S01") && options.StressCommands is null) options = options with { StressCommands = releases.Any(r => r.OfficialUnity is not null || r.GoUnity is not null) ? SpeedStress.CommonCommands : SpeedStress.DefaultCommands };
         var plan = SpeedProtocol.Schedule(options, releases.Select(r => r.Tag).ToArray());
         var environment = await InspectEditor(editor, ct);
@@ -46,6 +47,12 @@ public sealed class LocalSpeedCoordinator(string dataRoot, IProcessRunner runner
         Guid id = Guid.NewGuid(); string output = Path.Combine(Path.GetFullPath(dataRoot), "speed", "local-runs", id.ToString("N"));
         var run = new SpeedRun(id, DateTimeOffset.UtcNow, LocalWorkspace.Schema, releases.Any(r => r.OfficialUnity is not null || r.GoUnity is not null) ? "local-cross-tool-direct-measurement" : "local-direct-measurement", options, null,
             releases, plan, [], "running", Environment.MachineName, environment, officialCleanup, goCleanup);
+        progress?.Report("실행기·런타임·검증 자산의 파일 명세를 고정합니다.");
+        var manifest = await ResearchRuntime.Capture(AppContext.BaseDirectory, workerDirectory, ct);
+        run = run with { ResearchPlan = SpeedResearch.Freeze(run, fixtureHash, await SpeedFiles.Hash(worker, ct), manifest) };
+        Directory.CreateDirectory(output);
+        await File.WriteAllTextAsync(Path.Combine(output, "frozen-plan.json"), run.ResearchPlan.Payload, ct);
+        await File.WriteAllTextAsync(Path.Combine(output, "frozen-plan.sha256"), run.ResearchPlan.Sha256, ct);
         await SpeedFiles.Write(Path.Combine(output, "run.json"), run, ct);
         var results = new List<SpeedTrialResult>();
         void Notify(SpeedLiveStage stage, SpeedTrial? trial, SpeedTrialResult? result = null) => live?.Report(new(stage, results.Count, plan.Length, trial, result));
@@ -73,7 +80,7 @@ public sealed class LocalSpeedCoordinator(string dataRoot, IProcessRunner runner
                 await SpeedFiles.Write(Path.Combine(evidence, "request.json"), local, ct);
                 var memory = LocalWorkspace.Memory();
                 await SpeedFiles.Write(Path.Combine(evidence, "host-before.json"), new { at = DateTimeOffset.UtcNow,
-                    availableMemoryBytes = memory.Available, memoryLoadPercent = memory.Load, logicalProcessors = Environment.ProcessorCount }, ct);
+                    activePowerScheme = ResearchHost.PowerScheme(), availableMemoryBytes = memory.Available, memoryLoadPercent = memory.Load, logicalProcessors = Environment.ProcessorCount }, ct);
                 if (await SpeedFiles.Hash(editor, ct) != environment.EditorSha256) throw new IOException("시행 중 Unity 실행 파일이 변경되었습니다.");
                 int calls = trial.Experiment == "S01" ? (int)Math.Ceiling((double)options.StressRequests / options.StressConcurrency) :
                     trial.Experiment == "F02" ? int.Parse(trial.Variant) + 2 : trial.Variant == "first" ? 1 : options.Calls;
@@ -171,7 +178,7 @@ public sealed class LocalSpeedCoordinator(string dataRoot, IProcessRunner runner
         if (!Directory.Exists(root)) return;
         Directory.CreateDirectory(evidence);
         // Logs are copied after timing. Dump filenames/sizes are recorded; large dumps are not carried into the next trial.
-        foreach (string name in new[] { "editor.log", "ready.json", "editor-process.json", "result.json", "cli-help.txt", "cli-call-help.txt", "cli-exec-help.txt", "official-cli-version.json", "official-cli-help.txt", "official-cli-environment.json", "go-cli-version.txt", "go-cli-help.txt", "go-cli-exec-help.txt", "go-cli-environment.json", "packages-lock.json", SpeedExec.SourceName, SpeedExec.NonceName })
+        foreach (string name in new[] { "scene-observed.json", "editor.log", "ready.json", "editor-process.json", "result.json", "cli-help.txt", "cli-call-help.txt", "cli-exec-help.txt", "official-cli-version.json", "official-cli-help.txt", "official-cli-environment.json", "go-cli-version.txt", "go-cli-help.txt", "go-cli-exec-help.txt", "go-cli-environment.json", "packages-lock.json", SpeedExec.SourceName, SpeedExec.NonceName })
         {
             string file = Path.Combine(root, name); if (!File.Exists(file)) continue; SpeedFiles.Regular(file);
             await using var input = File.Open(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);

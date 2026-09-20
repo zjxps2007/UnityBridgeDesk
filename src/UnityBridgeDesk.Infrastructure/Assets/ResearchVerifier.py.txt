@@ -1,0 +1,231 @@
+"""Independent, standard-library analysis of Desk research bundles. Python >= 3.10.
+
+Uses quadrature of the Student density and inversion of the paired contrast,
+not the application's incomplete-beta quantile / quadratic-root implementation.
+Verifies computation and local integrity, not real-world statistical assumptions.
+"""
+import functools
+import hashlib
+import json
+import math
+import statistics as stat
+import sys
+from pathlib import Path
+
+
+@functools.lru_cache(None)
+def student95(df):
+    if df < 1:
+        raise ValueError("invalid degrees of freedom")
+    # Substitute x=sqrt(df)*tan(theta) into the Student density.
+    norm = math.exp(math.lgamma((df + 1) / 2) - math.lgamma(df / 2)) / math.sqrt(math.pi)
+    def area(t):
+        upper = math.atan(t / math.sqrt(df))
+        steps = 1024
+        h = upper / steps
+        f = lambda i: math.cos(i * h) ** (df - 1)
+        return norm * h / 3 * (f(0) + f(steps) + 4 * sum(f(i) for i in range(1, steps, 2))
+                               + 2 * sum(f(i) for i in range(2, steps, 2)))
+    lo, hi = 0.0, 16.0
+    for _ in range(55):
+        mid = (lo + hi) / 2
+        if area(mid) < .475:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
+
+
+def mean_interval(values):
+    n = len(values)
+    mean = stat.mean(values) if n else None
+    if n < 5:
+        return dict(N=n, Mean=mean, Lower=None, Upper=None)
+    half = student95(n - 1) * math.sqrt(stat.variance(values) / n)
+    return dict(N=n, Mean=mean, Lower=mean-half, Upper=mean+half)
+
+
+def ratio_interval(a, b):
+    n = len(a)
+    ratio = stat.mean(b) / stat.mean(a) if n else None
+    result = dict(N=n, Ratio=ratio, Lower=None, Upper=None)
+    if n < 5:
+        return result
+    scale = max(stat.mean(a), stat.mean(b))
+    a, b = [x/scale for x in a], [x/scale for x in b]
+    q = student95(n - 1)**2 / n
+    if stat.mean(a)**2 <= q * stat.variance(a):
+        return result
+    # Search the accepted paired t-contrast set around Bmean/Amean.
+    def contrast(r):
+        d = [y-r*x for x, y in zip(a, b)]
+        return stat.mean(d)**2 - q*stat.variance(d)
+    bounds = []
+    for direction in (-1, 1):
+        inside, width = ratio, max(1.0, abs(ratio)) * 1e-5
+        outside = ratio + direction*width
+        for _ in range(100):
+            if contrast(outside) > 0:
+                break
+            width *= 2
+            outside = ratio + direction*width
+        else:
+            return result
+        for _ in range(65):
+            mid = (inside + outside)/2
+            if contrast(mid) <= 0:
+                inside = mid
+            else:
+                outside = mid
+        bounds.append((inside+outside)/2)
+    return dict(N=n, Ratio=ratio, Lower=bounds[0], Upper=bounds[1])
+
+
+def valid(record):
+    guest = record.get("Guest") or {}
+    value = guest.get("WorkMs")
+    return (record.get("Status") == "success" and record.get("ResetVerified") is True
+            and guest.get("Status") == "success" and isinstance(value, (int, float))
+            and math.isfinite(value) and value > 0)
+
+
+def analyze(run):
+    plan, records = run["Plan"], run["Results"]
+    ids = {t["Id"]: t for t in plan}
+    if len(ids) != len(plan) or len({r["Trial"]["Id"] for r in records}) != len(records):
+        raise ValueError("duplicate trial identity")
+    for r in records:
+        if ids.get(r["Trial"]["Id"]) != r["Trial"]:
+            raise ValueError("result does not match plan")
+        if valid(r) and r["Trial"]["Experiment"] in ("F01", "F03", "F04"):
+            samples = r["Guest"]["Samples"]
+            if not samples or not math.isclose(stat.mean(s["Milliseconds"] for s in samples),
+                                               r["Guest"]["WorkMs"], rel_tol=1e-8, abs_tol=1e-8):
+                raise ValueError("trial mean differs from raw calls")
+    by_id = {r["Trial"]["Id"]: r for r in records}
+    groups = {}
+    blocks = {}
+    for t in plan:
+        key = (t["Experiment"], t["Variant"], t["Tag"])
+        groups.setdefault(key, [])
+        r = by_id.get(t["Id"])
+        value = r["Guest"]["WorkMs"] if r and valid(r) else None
+        if value is not None:
+            groups[key].append(value)
+        key2 = (t["Experiment"], t["Variant"], t["Block"])
+        block = blocks.setdefault(key2, {})
+        if t["Tag"] in block:
+            raise ValueError("duplicate target within block")
+        block[t["Tag"]] = value
+    means = [dict(Experiment=e, Variant=v, Tag=t, **mean_interval(x)) for (e,v,t),x in groups.items()]
+    comparisons = []
+    tags = [r["Tag"] for r in run["Releases"]]
+    if len(set(tags)) != len(tags):
+        raise ValueError("duplicate target")
+    for e,v in dict.fromkeys((e,v) for e,v,_ in groups):
+        for tag in tags[1:]:
+            pairs = [(b.get(tags[0]), b.get(tag)) for (ex,va,_),b in blocks.items() if (ex,va)==(e,v)]
+            pairs = [(a,b) for a,b in pairs if a is not None and b is not None]
+            interval = ratio_interval([a for a,b in pairs], [b for a,b in pairs])
+            comparisons.append(dict(Experiment=e, Variant=v, Tag=tag, **interval))
+    return dict(means=means, comparisons=comparisons)
+
+
+def check(directory):
+    def read(name):
+        return json.loads((directory/name).read_text(encoding="utf-8-sig"))
+    checksums = read("SHA256SUMS.json")
+    required = {"run.json", "research-summary.txt", "README.txt", "expected-analysis.json", "verify_analysis.py"}
+    optional = {"frozen-plan.json", "completion.txt", "scene-evidence.txt", "runtime-manifest.json"}
+    scene_names = {name for name in checksums if name.startswith("scene-") and name.endswith(".json")
+                   and len(name) == 43 and all(c in "0123456789abcdef" for c in name[6:-5])}
+    if not required.issubset(checksums) or set(checksums) - required - optional - scene_names:
+        raise ValueError("checksum manifest entries differ from bundle format")
+    for name, expected in checksums.items():
+        if Path(name).name != name or name in (".", ".."):
+            raise ValueError("unexpected archive path")
+        if hashlib.sha256((directory/name).read_bytes()).hexdigest() != expected:
+            raise ValueError("file changed: " + name)
+    run = read("run.json")
+    frozen = run.get("ResearchPlan")
+    plan_state = "absent (legacy run)"
+    if frozen:
+        if "frozen-plan.json" not in checksums:
+            raise ValueError("frozen plan missing from checksum manifest")
+        payload = frozen["Payload"]
+        if hashlib.sha256(payload.encode()).hexdigest() != frozen["Sha256"]:
+            raise ValueError("frozen plan hash mismatch")
+        if (directory/"frozen-plan.json").read_bytes().decode("utf-8") != payload:
+            raise ValueError("frozen plan file differs")
+        document = json.loads(payload)
+        if document.get("rules") not in ("desk-research-v1", "desk-research-v2"):
+            raise ValueError("unsupported frozen plan rules")
+        identity = document["identity"]
+        if set(identity) != {"Id", "StartedAt", "Schema", "Evidence", "Options", "Releases", "Plan", "Local", "HostDescription"}:
+            raise ValueError("frozen plan identity fields differ")
+        if any(run.get(k) != v for k,v in identity.items()):
+            raise ValueError("run differs from frozen plan")
+        if "runtime-manifest.json" in checksums and read("runtime-manifest.json") != document.get("runtimeManifest"):
+            raise ValueError("runtime manifest differs from frozen plan")
+        plan_state = "matches; local integrity only, not external registration"
+    # Independent final-state check for explicitly exported F02 observations.
+    scene_checks = 0
+    by_id = {r["Trial"]["Id"].replace("-", ""): r for r in run["Results"]}
+    for name in checksums:
+        if not (name.startswith("scene-") and name.endswith(".json")):
+            continue
+        trial_id = name[6:-5]
+        record = by_id.get(trial_id)
+        if record is None or record["Trial"]["Experiment"] != "F02":
+            raise ValueError("scene evidence has no matching F02 trial")
+        if (record.get("Guest") or {}).get("SceneEvidenceSha256") != checksums[name]:
+            raise ValueError("scene evidence does not match recorded hash")
+        objects = read(name)
+        valid_scene = isinstance(objects, list) and len(objects) == 1000
+        seen = set()
+        for obj in objects if isinstance(objects, list) else []:
+            try:
+                key = obj["name"]
+                index = int(key.removeprefix("DeskFixed_"))
+                xyz = [obj[axis] for axis in ("x", "y", "z")]
+                expected = [index % 100, index // 100, index % 7]
+                valid_scene &= (key == "DeskFixed_" + str(index) and 0 <= index < 1000 and index not in seen
+                                and all(math.isfinite(v) for v in xyz)
+                                and sum((v-e)**2 for v, e in zip(xyz, expected)) < 1e-10)
+                seen.add(index)
+            except (KeyError, ValueError, TypeError):
+                valid_scene = False
+        # Failure observations are still preserved; do not require an invalid scene to pass.
+        if valid(record) and not valid_scene:
+            raise ValueError("successful F02 trial failed independent scene oracle")
+        scene_checks += 1
+    actual, expected = analyze(run), read("expected-analysis.json")
+    errors = []
+    for kind in actual:
+        def key(row): return (row["Experiment"],row["Variant"],row["Tag"])
+        reference = {key(r): r for r in expected[kind]}
+        if set(reference) != {key(r) for r in actual[kind]}:
+            errors.append(kind + ": group mismatch")
+        for row in actual[kind]:
+            other = reference.get(key(row), {})
+            for field in ("N", "Mean", "Ratio", "Lower", "Upper"):
+                if field not in row:
+                    continue
+                a, b = row[field], other.get(field)
+                if (a is None) != (b is None) or (a is not None and not math.isclose(a,b,rel_tol=1e-6,abs_tol=1e-7)):
+                    errors.append(str(key(row)) + ": " + field)
+    expected_scenes = sum(bool((r.get("Guest") or {}).get("SceneEvidenceSha256")) for r in run["Results"])
+    result = dict(passed=not errors, plan=plan_state, scene_evidence_checked=scene_checks,
+                  scene_evidence_missing=expected_scenes-scene_checks, errors=errors, calculated=actual,
+                  scope="Independent arithmetic check only; no certification of measurement, independence or generalization")
+    (directory/"analysis-check.json").write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding="utf-8")
+    print("PASS" if not errors else "FAIL", "- independent arithmetic and local file integrity")
+    return 0 if not errors else 1
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(check(Path(sys.argv[1]) if len(sys.argv)>1 else Path(__file__).resolve().parent))
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        print("FAIL:", error, file=sys.stderr)
+        sys.exit(1)

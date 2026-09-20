@@ -46,7 +46,7 @@ public static class SpeedGuest
         request.Options.Validate();
         var prep = Stopwatch.StartNew(); double preparation = 0, validation = 0; double? work = null, readyGap = null;
         var samples = new List<SpeedSample>(); var commands = new List<string>(); string unityVersion = "", status = "failed"; string? error = null;
-        string stage = "preparation"; string? failureKind = null;
+        string stage = "preparation"; string? failureKind = null, sceneEvidenceHash = null;
         bool usesExec = SpeedExec.UsesExec(request.Trial);
         bool official = request.OfficialUnity is not null;
         bool go = request.GoUnity is not null;
@@ -224,6 +224,8 @@ public static class SpeedGuest
             (ProcessCommand Command, string Nonce) Prepare(string action, Dictionary<string, object>? values = null)
             {
                 values ??= []; string nonce = Guid.NewGuid().ToString("N"); values["action"] = action; values["nonce"] = nonce;
+                if (request.Options.Research?.Stage == "sensitivity" && action == "echo")
+                    values["delayMs"] = request.Trial.Tag.EndsWith(" [B]", StringComparison.Ordinal) ? 100 : 0;
                 string[] args = go ? GoUnityCli.Arguments(project, request.Options.TimeoutSeconds, "desk_probe", JsonSerializer.Serialize(values), usesExec) : official ? OfficialUnityCli.Arguments(project, request.Options.TimeoutSeconds, "desk_probe", JsonSerializer.Serialize(values),
                     usesExec ? Path.Combine(root, SpeedExec.SourceName) : null) : [..capabilities!.GlobalArguments(project, before.Port, InstanceDiscovery.DefaultDirectory, request.Options.TimeoutSeconds),
                     ..(usesExec ? new[] { "exec", capabilities.ExecFileOption!, Path.Combine(root, SpeedExec.SourceName) } : ["call", "desk_probe", "--params", JsonSerializer.Serialize(values)])];
@@ -286,13 +288,31 @@ public static class SpeedGuest
             Exception? validationError = null;
             for (int i = 0; i < replies.Count; i++)
             {
-                try { CheckValue(experiment, variant, Validate(replies[i], calls[i].Nonce)); samples[i] = samples[i] with { Outcome = "success" }; }
+                try
+                {
+                    CheckValue(experiment, variant, Validate(replies[i], calls[i].Nonce));
+                    double? inner = null;
+                    if (request.Options.Research?.Stage == "sensitivity")
+                    {
+                        inner = ReadData(replies[i], usesExec).GetProperty("delayElapsedMs").GetDouble();
+                        if (!double.IsFinite(inner.Value) || inner < 0 || inner > samples[i].Milliseconds ||
+                            (request.Trial.Tag.EndsWith(" [B]", StringComparison.Ordinal) ? inner < 90 : inner != 0))
+                            throw new SpeedMeasurementException("response-mismatch", "지연 대조의 실제 내부 시간 검사 실패.");
+                    }
+                    samples[i] = samples[i] with { Outcome = "success", InnerDelayMs = inner };
+                }
                 catch (Exception e) when (e is IOException or JsonException or InvalidOperationException or KeyNotFoundException or FormatException)
                 { samples[i] = samples[i] with { Outcome = "failed", FailureKind = SpeedFailure.Classify(e, stage), Error = e.Message }; validationError ??= e; }
             }
             if (validationError is not null) throw validationError;
             if (replies.Count != calls.Length) throw new SpeedMeasurementException("cli-error", "명령열을 완료하지 못했습니다.");
-            if (experiment == "F02" && !(await Untimed("inspect", new() { ["count"] = 1000 })).GetBoolean()) throw new SpeedMeasurementException("response-mismatch", "오브젝트 개수·ID·위치 검증 실패.");
+            if (experiment == "F02")
+            {
+                var observed = await Untimed("snapshot");
+                await SpeedFiles.Write(Path.Combine(root, "scene-observed.json"), observed, ct);
+                sceneEvidenceHash = await SpeedFiles.Hash(Path.Combine(root, "scene-observed.json"), ct);
+                SceneOracle.Validate(observed, 1000);
+            }
             var after = discovery.Find(target, before.Port);
             if (after.State != "ready" || after.CompileErrors) throw new SpeedMeasurementException("response-mismatch", "응답 후 대상 상태 검증 실패.");
             work = experiment == "F02" ? Stopwatch.GetElapsedTime(batchStart, batchEnd).TotalMilliseconds : samples.Average(s => s.Milliseconds);
@@ -311,7 +331,7 @@ public static class SpeedGuest
         return new(request.RunId, request.Trial.Id, request.GuestNonce, local is null ? SpeedProtocol.Schema : LocalWorkspace.Schema, status, error, preparation, work, validation,
             samples.ToArray(), Environment.ProcessId, Environment.MachineName, unityVersion, request.CliSha256, request.ConnectorSha256,
             request.FixtureSha256, Stopwatch.Frequency, commands.ToArray(), readyGap, cliTreeHash, reportedConnector,
-            failureKind, failureKind is null ? null : stage, usesExec ? SpeedExec.Sha256 : null, measurementMs, warmupMilliseconds.ToArray());
+            failureKind, failureKind is null ? null : stage, usesExec ? SpeedExec.Sha256 : null, measurementMs, warmupMilliseconds.ToArray(), sceneEvidenceHash);
     }
     private static void ValidateValue(string experiment, string variant, JsonElement value)
     {

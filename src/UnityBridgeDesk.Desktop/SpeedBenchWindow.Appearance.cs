@@ -168,6 +168,7 @@ public partial class SpeedBenchWindow
         ShowWorkspacePage(0); Tabs.SelectedIndex = 0;
         FrameworkElement? target = OptionFields.FirstOrDefault(b => b != StressScenarios &&
             b.Parent is FrameworkElement { IsEnabled: true } && FindName(b.Name + "Error") is TextBlock { Text.Length: > 0 });
+        target ??= ResearchInvalidInput();
         if (target is null)
         {
             try { ReadOptions(); } catch (Exception error) when (error is ArgumentException or System.Text.Json.JsonException)
